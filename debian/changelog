@@ -1,3 +1,17 @@
+sesame (2.0.2) unstable; urgency=medium
+
+  * Installation sans question de dpkg (--force-confdef --force-confold) ;
+    un fichier de configuration vide prend la version du paquet
+    (/etc/apparmor.d/local/usr.sbin.cupsd), un paquet resté à moitié
+    installé est réparé, himmelblau-apparmor est retiré s'il ne peut
+    pas être configuré.
+  * Quitter l'AD désactive aussi les sockets de SSSD.
+  * Un seul dossier personnel : home_attr = SPN, home_alias = UUID et
+    /home/<adresse> devient un lien vers le dossier du compte local.
+  * Première connexion : rappel du trousseau GNOME à mettre à jour.
+
+ -- mawena <57989130+mawena@users.noreply.github.com>  Wed, 11 Nov 2026 21:47:48 +0000
+
 sesame (2.0.1) unstable; urgency=medium
 
   * La compilation de Himmelblau lancée par la file Gagarine trouve de

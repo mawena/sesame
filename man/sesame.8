@@ -91,7 +91,8 @@ uniquement des chiffres) : \fBhostnamectl\fR et la ligne 127.0.1.1 de
 .IR /etc/hosts .
 .TP
 .B quitter\-ad
-Quitte le domaine Active Directory et retire sssd de la configuration, si le poste en fait partie.
+Quitte le domaine Active Directory, arrête sssd et ses sockets et le retire de la configuration, si le poste en fait
+partie.
 .TP
 .B outils
 Installe les outils de compilation (\fBpodman\fR, \fBuidmap\fR, \fBgit\fR, \fBmake\fR) et vérifie que le compte local a
@@ -134,12 +135,18 @@ puis réinstalle. Sinon, affiche « Himmelblau est à jour ».
 .I /etc/himmelblau/himmelblau.conf
 (section
 .BR [global] :
-.B domain
+.BR domain ,
+.BR user_map_file ,
+.B home_attr = SPN
 et
-.BR user_map_file ),
+.BR "home_alias = UUID" ),
 relie le compte local à l'adresse dans
 .IR /etc/himmelblau/user\-map ,
-active et redémarre
+fait de
+.I /home/ADRESSE
+un lien vers le dossier du compte local (un dossier déjà créé par Himmelblau est renommé
+.IR DOSSIER.avant\-sesame\-DATE ,
+jamais supprimé), active et redémarre
 .BR himmelblaud .
 Les valeurs manquantes sont demandées ; le compte local par défaut est celui de l'utilisateur courant.
 .TP
@@ -149,7 +156,9 @@ Explique la première connexion et la note dans
 .TP
 .B desactiver
 Retire le compte de
-.IR user\-map ,
+.I user\-map
+et le lien
+.IR /home/ADRESSE ,
 désactive le profil PAM de Himmelblau et arrête ses services : la connexion Entra est coupée, rien n'est désinstallé.
 .B sesame rejoindre
 rétablit tout.

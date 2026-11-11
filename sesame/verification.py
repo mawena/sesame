@@ -26,6 +26,10 @@ def controler(systeme, config):
     attendu = f"{config.compte_local} est relié à {config.compte}"
     res.append((bool(config.compte_local) and liens.get(config.compte_local, "").lower() == config.compte.lower()
                 and bool(config.compte), f"user-map : {attendu}"))
+    local = systeme.comptes_locaux().get(config.compte_local)
+    dossier = local.dossier if local else config.dossier
+    res.append((bool(config.compte) and himmelblau.dossier_relie(systeme, config.compte, dossier),
+                f"Le dossier de {config.compte} mène à {dossier}"))
     if systeme.programme_present("aad-tool"):
         res.append((systeme.lancer(["aad-tool", "status"]).ok, "aad-tool status répond"))
     actuel = (systeme.lire(chemins.HOSTNAME).split() or [""])[0].split(".")[0]

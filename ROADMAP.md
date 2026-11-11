@@ -1,6 +1,6 @@
 # Sésame — feuille de route
 
-Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local. Conception : [docs/conception-1.0.0.md](docs/conception-1.0.0.md).
+Connexion à Ubuntu par Microsoft Entra ID avec Himmelblau (compilé sur le poste), en gardant le compte local. Conception : [docs/conception-2.0.0.md](docs/conception-2.0.0.md) (historique : [docs/conception-1.0.0.md](docs/conception-1.0.0.md), authd).
 
 ## Phase 1 — Conception
 
@@ -49,7 +49,7 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 - [x] Release GitHub avec le `.deb` et `SHA256SUMS`
 - [x] Publication dans le dépôt APT, vérification par `apt-get update` sans root
 
-## Phase 7 — Mise en place sur le poste de Charles
+## Phase 7 — Mise en place sur le poste de Charles (abandonnée : authd remplacé par Himmelblau, voir la phase 9)
 
 - [ ] Application « Ubuntu authd » créée dans le portail Entra (Charles), avec l'URI de redirection de la 1.1.0
 - [ ] Étapes 1 à 5 avec l'assistant
@@ -79,4 +79,13 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 - [x] Ligne de commande `sesame rejoindre`, documentation
 - [x] Tests par la file Gagarine
 - [x] Release 2.0.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
-- [ ] Mise à jour sur le poste, compilation de Himmelblau, première connexion Entra
+- [x] Mise à jour sur le poste, compilation de Himmelblau 4.0.8, installation, première connexion Entra (11/11/2026, 21 h 33)
+
+## Phase 10 — Correctif 2.0.2
+
+- [x] Installation sans question de dpkg (`--force-confdef --force-confold`), fichiers de configuration vides alignés sur le paquet, réparation d'un paquet à moitié installé, retrait de `himmelblau-apparmor` s'il ne peut être configuré
+- [x] Quitter l'AD : sockets de SSSD désactivés et état d'échec effacé
+- [x] Un seul dossier personnel : `home_attr = SPN`, `home_alias = UUID`, `/home/<adresse>` lien vers le dossier local (ancien dossier renommé, jamais supprimé), retiré par « désactiver », exigé par la détection et la vérification
+- [x] Texte de première connexion : trousseau GNOME à mettre au mot de passe Entra
+- [x] Tests par la file Gagarine
+- [ ] Release 2.0.2 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
