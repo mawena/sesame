@@ -1,2 +1,4 @@
 # Voulu : le paquet installe sa propre source APT (dépôt signé du projet) pour que « apt upgrade » le mette à jour.
 sesame: package-installs-apt-sources [etc/apt/sources.list.d/sesame.sources]
+# Le journal est écrit en français : « authentification » n'est pas une faute d'anglais.
+sesame: spelling-error-in-changelog authentification authentication [usr/share/doc/sesame/changelog.gz]
