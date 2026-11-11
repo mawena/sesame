@@ -4,35 +4,35 @@ Hash: SHA512
 Architectures: all amd64
 Codename: stable
 Components: main
-Date: Wed, 11 Nov 2026 15:47:51 +0000
+Date: Wed, 11 Nov 2026 17:34:23 +0000
 Description: Sésame, connexion Ubuntu à Microsoft Entra ID
 Label: Sésame
 Origin: Sésame
 Suite: stable
 MD5Sum:
- 5ef8f45533150cbd46899fc85e66e288             3310 main/binary-all/Packages
- 6bc9d979e88c483b2655102abef096bb             1146 main/binary-all/Packages.gz
+ 0ab4a7b00a84ba99fec185a63cefdb8d             4934 main/binary-all/Packages
+ 8d3abfe332a0a5647bb35e91cd3c014b             1579 main/binary-all/Packages.gz
  d41d8cd98f00b204e9800998ecf8427e                0 main/binary-amd64/Packages
  4a4dd3598707603b3f76a2378a4504aa               20 main/binary-amd64/Packages.gz
 SHA1:
- 4ee18be78adf25a84caecdc49fcd4107c9e8d13c             3310 main/binary-all/Packages
- 470ab211be184f9378efc77b70c40a2ec8876918             1146 main/binary-all/Packages.gz
+ b0fa5e6a3076c1d5fe65b525da31231c0c17f4c1             4934 main/binary-all/Packages
+ b879047faf2188017c12b0e57aa000ee78cfd141             1579 main/binary-all/Packages.gz
  da39a3ee5e6b4b0d3255bfef95601890afd80709                0 main/binary-amd64/Packages
  a0fddd5458378c1bf3c10dd2f5c060d1347741ed               20 main/binary-amd64/Packages.gz
 SHA256:
- 717867dccc5c4d050bc70db930012077d42ca29e103697f43edc7b24709955ce             3310 main/binary-all/Packages
- 73702f84b72b256b5a735e969ce85d8451ab498951c22b9e1e42b8410055dbf1             1146 main/binary-all/Packages.gz
+ 163905d529488586d753dca85352cbba08544d58223f6e1d6b6408798a52748b             4934 main/binary-all/Packages
+ c398668ac3229c6996aa3f54344fc10e6252d15a212bab063400847354612b72             1579 main/binary-all/Packages.gz
  e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855                0 main/binary-amd64/Packages
  f61f27bd17de546264aa58f40f3aafaac7021e0ef69c17f6b1b4cd7664a037ec               20 main/binary-amd64/Packages.gz
 SHA512:
- a5db7ae4826325f39de69314c2e139d506aeb00566390b2f89122d3bcf44161e96a5e6b8c3f5e0dedf22d7038544da57188dd814956f57d0be822da10c812e0d             3310 main/binary-all/Packages
- 102110f125e84c5e6444cb316221b0af78b060e76415ea07966c083ad7b1ec0e4cc47ddbb6b05df1d0fd55fc23d55c0d7d8444175de0bd80aa6128845da97446             1146 main/binary-all/Packages.gz
+ 692dd67071410729cc14a0c6574fba33866ca3d33aaaf069cb28aafed4776ed64b5f48f210402231960013b35f596f748fd7c4b491c452b0e5811eb007e3693e             4934 main/binary-all/Packages
+ da23c6e40a78038fda178b873138342ebd0c038e0f1f18c9aee6c2ee7ce4855f16a47527db1e86b2128c38f1f05c848c19c1af0854a92f8bcf707226f6cc3fd9             1579 main/binary-all/Packages.gz
  cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e                0 main/binary-amd64/Packages
  1b46b9b08d5b338be9d732a1724795b2eab63daffde377218727c90857b79fe6a47bceed495117fcde60f7339812ef75ef4c69f82dd79fb69b6cbf8006b521f2               20 main/binary-amd64/Packages.gz
 -----BEGIN PGP SIGNATURE-----
 
-iHUEARYKAB0WIQTsPvVj/hsTPlV1MScQibk3tL2n8QUCavSOJwAKCRAQibk3tL2n
-8bJKAQDH3U3knOfuWrmxgG8nLD5ILuLLA2uyOALad25P47ThhQEAiTygPGGbX70Y
-iX9SVg5KeG2eHhnosLNoCcpjA3tCPgY=
-=exoN
+iHUEARYKAB0WIQTsPvVj/hsTPlV1MScQibk3tL2n8QUCavSnHwAKCRAQibk3tL2n
+8fPBAQC8OmWYpAW9JqLu5nKhu/z/BVZ38M4SppGxA7AQjI5oKgEA4hVA3P7Pgip+
+FmZUP6Kr4ZritgMuEIHySWg4ZWjaYQ4=
+=JC7S
 -----END PGP SIGNATURE-----

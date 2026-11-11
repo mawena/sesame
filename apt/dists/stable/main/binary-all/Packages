@@ -70,3 +70,39 @@ Description: connect an Ubuntu desktop to Microsoft Entra ID with authd
  The package installs a signed APT repository entry, so "apt upgrade" keeps
  Sesame up to date.
 
+Package: sesame
+Version: 2.0.0
+Architecture: all
+Maintainer: mawena <57989130+mawena@users.noreply.github.com>
+Installed-Size: 220
+Depends: python3 (>= 3.10), pkexec, polkitd, passwd
+Recommends: python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1 (>= 1.5)
+Filename: pool/main/sesame_2.0.0_all.deb
+Size: 54890
+MD5sum: 1f43f00855b1847e71b7ba8b6b3f2a14
+SHA1: 90f9d3437994760f3279b8dad658c2d19966ab5c
+SHA256: 2ff774e37b347dc8701e71bbc8ace8ab53364188f60e684ab20dc675971cdaa4
+Section: admin
+Priority: optional
+Homepage: https://mawena.github.io/sesame/
+Description: join an Ubuntu desktop to Microsoft Entra ID with Himmelblau
+ Sesame joins an Ubuntu Desktop 24.04 or newer to Microsoft Entra ID the way
+ a Windows PC does, through Himmelblau: no Entra application or tenant ID to
+ create. You give your work address and a machine name; your existing local
+ account is linked to your Entra account and keeps its UID, home directory
+ and settings. You sign in with the Entra password and confirm on your
+ phone.
+ .
+ Every step detects whether it is already done and can be run again. The
+ configuration is backed up first, and a rescue administrator account is
+ created. Himmelblau (stable branch) is built on the machine, as the user
+ and without root, then installed; this takes about 30 to 60 minutes and is
+ queued by Gagarine when it is present.
+ .
+ It comes as a graphical assistant ("sesame-assistant", GTK 4 and
+ libadwaita, which needs the recommended packages), a command line
+ ("sesame") and a root helper launched through pkexec.
+ .
+ The package installs a signed APT repository entry, so "apt upgrade" keeps
+ Sesame up to date.
+
