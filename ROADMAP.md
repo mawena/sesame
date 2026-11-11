@@ -88,4 +88,4 @@ Connexion à Ubuntu par Microsoft Entra ID avec Himmelblau (compilé sur le post
 - [x] Un seul dossier personnel : `home_attr = SPN`, `home_alias = UUID`, `/home/<adresse>` lien vers le dossier local (ancien dossier renommé, jamais supprimé), retiré par « désactiver », exigé par la détection et la vérification
 - [x] Texte de première connexion : trousseau GNOME à mettre au mot de passe Entra
 - [x] Tests par la file Gagarine
-- [ ] Release 2.0.2 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
+- [x] Release 2.0.2 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
