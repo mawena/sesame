@@ -67,3 +67,16 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 - [x] Tests par la file Gagarine
 - [x] Release 1.1.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
 - [x] Mise à jour sur le poste
+
+## Phase 9 — Sésame 1.2.0 : rejoindre Entra comme un PC Windows
+
+- [x] Machine renommée `LPCFNTG-00111`, sortie du domaine AD par Sésame (11/11/2026)
+- [x] Étude : client « Microsoft Graph Command Line Tools » (code à usage unique vérifié), authd absent de GitHub
+- [x] Feature git flow `rejoindre-entra`, conception 1.2.0
+- [ ] `sesame/entra.py` : connexion Microsoft (PKCE, code à usage unique), création de l'application « Ubuntu authd »
+- [ ] Assistant root `rejoindre` : secours avec le mot de passe actuel, nom de la machine, reprise en attente
+- [ ] Assistant graphique : page « Rejoindre », fenêtre de connexion Microsoft, mode avancé, rappel après la première connexion
+- [ ] `sesame rejoindre` en ligne de commande, documentation
+- [ ] Tests par la file Gagarine
+- [ ] Release 1.2.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
+- [ ] Mise à jour sur le poste
