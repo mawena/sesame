@@ -177,6 +177,11 @@ une fois et fait trois choses : il supprime d'abord `reprise-programmee` (jamais
 et l'annule si elle échoue. Enfin, il se désactive (`systemctl disable sesame-reprise.service`) et laisse le démarrage
 continuer, réussite ou échec. `sesame reprise --annuler-programmation` retire le fichier et désactive le service.
 
+Les services système qui tournent sous le compte local (`User=A` ou `User=U`, par exemple `cofidash.service`)
+démarreraient en même temps que la reprise : celle-ci verrait alors des processus sous `U` et refuserait de se faire.
+Pour l'éviter, la programmation écrit une surcharge `sesame-reprise.service.d/sesame-ordre.conf` avec
+`Before=<ces services>`. La surcharge est retirée après l'exécution ou à l'annulation de la programmation.
+
 ```ini
 [Unit]
 Description=Sésame : reprise du compte local par le compte Entra

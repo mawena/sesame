@@ -1,5 +1,6 @@
 [Unit]
 Description=Sésame : reprise du compte local par le compte Entra
+Documentation=man:sesame(8)
 ConditionPathExists=/var/lib/sesame/reprise-programmee
 After=local-fs.target authd.socket authd.service
 Wants=authd.service

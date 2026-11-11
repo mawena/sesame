@@ -328,20 +328,54 @@ def _annuler_reglages(systeme, sauv, a, n):
 
 
 # --- démarrage
+ORDRE_REPRISE = f"{chemins.UNITES_SYSTEME}/{chemins.UNITE_REPRISE}.d/sesame-ordre.conf"
+
+
+def unites_du_compte(systeme, p):
+    """Services système qui tournent sous le compte local (`User=A` ou `User=U`)."""
+    motif = re.compile(rf"^User=({re.escape(p.compte_local)}|{p.uid})[ \t]*$", re.M)
+    trouvees = []
+    for nom in systeme.lister(chemins.UNITES_SYSTEME):
+        chemin = f"{chemins.UNITES_SYSTEME}/{nom}"
+        if nom.endswith(".service") and systeme.chemin(chemin).is_file() and motif.search(systeme.lire(chemin)):
+            trouvees.append(nom)
+    return trouvees
+
+
+def _ecrire_ordre(systeme, p):
+    """Au démarrage, ces services tourneraient déjà sous le compte local et bloqueraient la reprise :
+    une surcharge du service de reprise le fait passer avant eux."""
+    unites = unites_du_compte(systeme, p)
+    if unites:
+        systeme.ecrire(ORDRE_REPRISE, "[Unit]\n# Écrit par Sésame : la reprise passe avant les services qui tournent "
+                                      "sous le compte local.\nBefore=" + " ".join(unites) + "\n")
+    return unites
+
+
+def _retirer_ordre(systeme):
+    systeme.supprimer(ORDRE_REPRISE)
+    dossier = ORDRE_REPRISE.rsplit("/", 1)[0]
+    if systeme.existe(dossier) and systeme.est_vide(dossier):
+        systeme.supprimer(dossier)
+
+
 def programmer(systeme, p):
-    """Écrit reprise-programmee et active le service de démarrage."""
+    """Écrit reprise-programmee et active le service de démarrage (`enable` recharge systemd)."""
     verifier(systeme, p, "au-demarrage")
+    _ecrire_ordre(systeme, p)
     systeme.ecrire_json(chemins.REPRISE_PROGRAMMEE, asdict(p), 0o600)
     try:
         systeme.executer(["systemctl", "enable", chemins.UNITE_REPRISE])
     except ErreurSesame:
         systeme.supprimer(chemins.REPRISE_PROGRAMMEE)
+        _retirer_ordre(systeme)
         raise
     return "La reprise aura lieu au prochain démarrage, avant l'écran de connexion."
 
 
 def annuler_programmation(systeme):
     systeme.supprimer(chemins.REPRISE_PROGRAMMEE)
+    _retirer_ordre(systeme)
     systeme.executer(["systemctl", "disable", chemins.UNITE_REPRISE], tolerant=True)
     return "La reprise programmée est retirée."
 
@@ -359,6 +393,7 @@ def executer_demarrage(systeme):
         ok, message = _terminer(systeme, False, f"Échec de la reprise : {e!r}", "execution-demarrage")
     try:
         systeme.executer(["systemctl", "disable", chemins.UNITE_REPRISE], tolerant=True)
+        _retirer_ordre(systeme)
     except Exception:
         pass
     return ok, message

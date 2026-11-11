@@ -318,6 +318,21 @@ class TestDemarrage(BaseReprise):
         self.assertEqual(oct(self.m.chemin(chemins.REPRISE_PROGRAMMEE).stat().st_mode & 0o777), "0o600")
         self.assertIn(["systemctl", "enable", "sesame-reprise.service"], self.m.appels)
 
+    def test_programmation_passe_avant_les_services_du_compte(self):
+        """Un service `User=A` tournerait déjà au démarrage et bloquerait la reprise : elle passe avant lui."""
+        self.programmer()
+        ordre = self.m.lire(reprise.ORDRE_REPRISE)
+        self.assertIn("Before=app.service", ordre)
+        self.assertNotIn("autre.service", ordre)
+        reprise.annuler_programmation(self.m)
+        self.assertFalse(self.existe(reprise.ORDRE_REPRISE))
+        self.assertFalse(self.existe(reprise.ORDRE_REPRISE.rsplit("/", 1)[0]))
+
+    def test_ordre_retire_apres_le_demarrage(self):
+        self.programmer()
+        reprise.executer_demarrage(self.m)
+        self.assertFalse(self.existe(reprise.ORDRE_REPRISE))
+
     def test_programmation_qui_echoue_retire_le_fichier(self):
         self.m.panne_a = 0
         with self.assertRaises(ErreurSesame):

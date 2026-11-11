@@ -12,7 +12,7 @@ Architecture: all
 Depends: ${misc:Depends},
          python3 (>= 3.10),
          pkexec,
-         policykit-1 | polkitd,
+         polkitd,
          realmd,
          snapd,
          software-properties-common,
