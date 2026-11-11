@@ -22,11 +22,11 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 
 ## Phase 3 — Assistant graphique
 
-- [ ] Fenêtre GTK 4 + libadwaita : compte Entra, étapes, journal, bandeau
-- [ ] Dialogues : secours, première connexion, reprise, guide du portail, vérification, à propos
-- [ ] Lancement asynchrone de `pkexec sesame-racine --json`
-- [ ] Fichier `.desktop`, metainfo, icônes, page de manuel, capture d'écran
-- [ ] Test de l'interface
+- [x] Fenêtre GTK 4 + libadwaita : compte Entra, étapes, journal, bandeau
+- [x] Dialogues : secours, première connexion, reprise, guide du portail, vérification, à propos
+- [x] Lancement asynchrone de `pkexec sesame-racine --json`
+- [x] Fichier `.desktop`, metainfo, icônes, page de manuel, capture d'écran
+- [x] Test de l'interface
 
 ## Phase 4 — Paquet, dépôt APT, site, documentation
 

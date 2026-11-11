@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Sésame
+GenericName=Connexion Microsoft Entra ID
+Comment=Connecte le poste à Microsoft Entra ID par authd et reprend le compte local
+Comment[fr]=Connecte le poste à Microsoft Entra ID par authd et reprend le compte local
+Exec=sesame-assistant
+Icon=io.github.mawena.Sesame
+Terminal=false
+Categories=GTK;GNOME;Settings;Security;
+Keywords=Entra;Azure;Microsoft;connexion;authd;compte;identité;
+StartupNotify=true
+StartupWMClass=io.github.mawena.Sesame
