@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 from sesame import chemins, cli, guide, sauvegarde
 from tests.commun import A, CLIENT, LOCATAIRE, N, Base
+from sesame.version import VERSION
 
 DEPOT = Path(__file__).resolve().parent.parent
 
@@ -44,12 +45,12 @@ class BaseCli(Base):
 class TestAffichage(BaseCli):
     def test_version(self):
         code, sortie, _ = self.main("version")
-        self.assertEqual((code, sortie), (0, "Sésame 1.0.0\n"))
+        self.assertEqual((code, sortie), (0, f"Sésame {VERSION}\n"))
 
     def test_version_via_le_lanceur(self):
         r = subprocess.run([sys.executable, str(DEPOT / "bin" / "sesame"), "version"], capture_output=True, text=True)
-        self.assertEqual(r.stdout, "Sésame 1.0.0\n")
-        self.assertEqual(r.stdout.split()[-1], "1.0.0")
+        self.assertEqual(r.stdout, f"Sésame {VERSION}\n")
+        self.assertEqual(r.stdout.split()[-1], VERSION)
 
     def test_portail(self):
         _, sortie, _ = self.main("portail")
@@ -130,24 +131,36 @@ class TestRacine(BaseCli):
         self.assertEqual(self.lanceur.appels, [])
 
     def test_configurer_demande_les_valeurs_manquantes(self):
-        reponses = iter([LOCATAIRE, CLIENT, N, "", ""])
+        reponses = iter([LOCATAIRE, CLIENT, N, "", "", ""])
         invites = []
         self.main("configurer", saisie=lambda p: invites.append(p) or next(reponses))
         cmd, _ = self.lanceur.appels[0]
-        self.assertEqual(cmd[-11:], ["configurer", "--locataire", LOCATAIRE, "--client", CLIENT, "--compte", N,
-                                     "--compte-local", A, "--groupes", "sudo,docker"])
+        self.assertEqual(cmd[-13:], ["configurer", "--locataire", LOCATAIRE, "--client", CLIENT, "--compte", N,
+                                     "--compte-local", A, "--groupes", "sudo,docker", "--connexion", "mot-de-passe"])
         self.assertIn(f"[{A}]", invites[3])  # le compte local est proposé
+        self.assertIn("comme sur Windows", invites[5])
+        self.assertIn("[mot-de-passe]", invites[5])  # proposé par défaut
+
+    def test_configurer_connexion_par_code(self):
+        reponses = iter(["mauvais", "code"])
+        self.main("configurer", "--locataire", LOCATAIRE, "--client", CLIENT, "--compte", N, "--compte-local", A,
+                  "--groupes", "", saisie=lambda p: next(reponses))
+        self.assertEqual(self.lanceur.appels[0][0][-2:], ["--connexion", "code"])
+        self.lanceur.appels.clear()
+        self.main("configurer", "--locataire", LOCATAIRE, "--client", CLIENT, "--compte", N, "--compte-local", A,
+                  "--groupes", "", "--connexion", "code", saisie=lambda p: self.fail("question inattendue"))
+        self.assertEqual(self.lanceur.appels[0][0][-2:], ["--connexion", "code"])
 
     def test_configurer_redemande_une_valeur_invalide(self):
         reponses = iter(["pas-un-guid", LOCATAIRE])
         code, _, erreur = self.main("configurer", "--client", CLIENT, "--compte", N, "--compte-local", A,
-                                    "--groupes", "sudo", saisie=lambda p: next(reponses))
+                                    "--groupes", "sudo", "--connexion", "code", saisie=lambda p: next(reponses))
         self.assertIn("invalide", erreur)
         self.assertIn(LOCATAIRE, self.lanceur.appels[0][0])
 
     def test_configurer_sans_question_si_tout_est_donne(self):
         self.main("configurer", "--locataire", LOCATAIRE, "--client", CLIENT, "--compte", N.upper(), "--compte-local", A,
-                  "--groupes", "", saisie=lambda p: self.fail("question inattendue"))
+                  "--groupes", "", "--connexion", "mot-de-passe", saisie=lambda p: self.fail("question inattendue"))
         cmd, _ = self.lanceur.appels[0]
         self.assertIn(N, cmd)  # UPN en minuscules
 

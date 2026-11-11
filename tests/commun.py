@@ -28,6 +28,8 @@ class Machine(Systeme):
         self.entra = {}           # nom -> {"uid", "gid", "home"}
         self.domaines_joints = []
         self.paquets, self.snaps = set(), set()
+        self.versions = {"authd": "0.7.1~24.04", "authd-msentraid": "0.5.0"}   # versions installées
+        self.mises_a_jour = {}    # versions qu'apporteraient apt-get install et snap refresh
         self.actifs, self.actives = set(), set()
         self.crontabs = {}
         self.mots_de_passe = {}
@@ -102,17 +104,32 @@ class Machine(Systeme):
         return Resultat(0)
 
     def _dpkg_query(self, a, entree):
-        return Resultat(0, "ii ") if a[-1] in self.paquets else Resultat(1, "", "pas installé")
+        if a[-1] not in self.paquets:
+            return Resultat(1, "", "pas installé")
+        return Resultat(0, self.versions.get(a[-1], "1.0")) if "-f=${Version}" in a else Resultat(0, "ii ")
+
+    def _mettre_a_jour(self, nom):
+        if nom in self.mises_a_jour:
+            self.versions[nom] = self.mises_a_jour[nom]
 
     def _snap(self, a, entree):
         if a[0] == "install":
             self.snaps.add(a[-1])
+            self._mettre_a_jour(a[-1])
             return Resultat(0)
-        return Resultat(0) if a[-1] in self.snaps else Resultat(1, "", "snap introuvable")
+        if a[-1] not in self.snaps:
+            return Resultat(1, "", "snap introuvable")
+        if a[0] == "refresh":
+            self._mettre_a_jour(a[-1])
+            return Resultat(0)
+        return Resultat(0, "Name             Version  Rev  Tracking       Publisher   Notes\n"
+                           f"{a[-1]}  {self.versions.get(a[-1], '1.0')}  42   latest/stable  canonical✓  -\n")
 
     def _apt_get(self, a, entree):
         if a[0] == "install":
-            self.paquets.update(x for x in a[1:] if not x.startswith("-"))
+            for nom in (x for x in a[1:] if not x.startswith("-")):
+                self.paquets.add(nom)
+                self._mettre_a_jour(nom)
         return Resultat(0)
 
     def _systemctl(self, a, entree):

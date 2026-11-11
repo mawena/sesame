@@ -40,18 +40,30 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 
 - [x] Tests complets par la file Gagarine
 - [x] Construction du `.deb`, lintian sans erreur ni avertissement
-- [ ] Installation sur le poste (`pkexec`), `sesame etat` et l'assistant sur le vrai système
+- [x] Installation sur le poste (`pkexec`), `sesame etat` et l'assistant sur le vrai système
 
 ## Phase 6 — Release 1.0.0
 
 - [x] Lien SSH du dépôt, `origin`, dépôt GitHub (« About » : site + dépôt APT)
 - [x] Release git flow 1.0.0, CHANGELOG, tag `v1.0.0`, push de `main`, `develop` et des tags
-- [ ] Release GitHub avec le `.deb` et `SHA256SUMS`
-- [ ] Publication dans le dépôt APT, vérification par `apt-get update` sans root
+- [x] Release GitHub avec le `.deb` et `SHA256SUMS`
+- [x] Publication dans le dépôt APT, vérification par `apt-get update` sans root
 
 ## Phase 7 — Mise en place sur le poste de Charles
 
-- [ ] Application « Ubuntu authd » créée dans le portail Entra (Charles)
+- [ ] Application « Ubuntu authd » créée dans le portail Entra (Charles), avec l'URI de redirection de la 1.1.0
 - [ ] Étapes 1 à 5 avec l'assistant
 - [ ] Première connexion Entra
 - [ ] Reprise du compte au démarrage, puis vérification
+
+## Phase 8 — Sésame 1.1.0 : connexion comme sur Windows
+
+- [x] Étude du flux « Entra authentication » (authd 0.7.0, module 0.5.0) : mot de passe Entra + double authentification, inscription de l'appareil
+- [x] Feature git flow `connexion-entra`
+- [x] Cœur : réglage `connexion`, `broker.conf` par mode, versions minimales, détection du changement de mode
+- [x] Ligne de commande, assistant root, assistant graphique (choix « Connexion »), texte de première connexion
+- [x] Guide du portail : URI de redirection, inscription des appareils, double authentification, AD FS
+- [x] Documentation : README, pages de manuel, site, conception 1.1.0
+- [x] Tests par la file Gagarine
+- [ ] Release 1.1.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
+- [ ] Mise à jour sur le poste

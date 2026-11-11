@@ -1,5 +1,7 @@
 # Sésame 1.0.0 — conception
 
+Suite : [Sésame 1.1.0 — connexion par mot de passe](conception-1.1.0.md).
+
 Sésame branche un poste **Ubuntu Desktop 24.04 ou plus récent** sur **Microsoft Entra ID**, en s'appuyant sur
 **authd** (Canonical) et son module `authd-msentraid` (snap). Ensuite, le compte Entra **reprend le compte local
 existant** : même UID, même dossier personnel, mêmes groupes, même crontab. L'utilisateur retrouve son bureau, mais

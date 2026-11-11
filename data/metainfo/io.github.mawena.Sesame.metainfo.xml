@@ -56,6 +56,11 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="1.1.0" date="2026-11-11">
+      <description>
+        <p>Connexion comme sur Windows : adresse pro, mot de passe Entra et double authentification, avec inscription du poste dans Entra. Le code sur le téléphone reste proposé.</p>
+      </description>
+    </release>
     <release version="1.0.0" date="2026-11-11">
       <description>
         <p>Première version : assistant graphique et ligne de commande, assistant root, reprise du compte au démarrage.</p>

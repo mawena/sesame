@@ -162,6 +162,25 @@ class TestInstaller(Base):
         actions.installer(self.m)
         self.assertNotIn(["snap", "install", "authd-msentraid"], self.m.appels)
 
+    def test_met_a_jour_le_module_deja_installe(self):
+        self.m.snaps.add("authd-msentraid")
+        self.m.versions.update({"authd": "0.6.0", "authd-msentraid": "0.4.0"})
+        self.m.mises_a_jour.update({"authd": "0.7.0", "authd-msentraid": "0.5.1"})
+        self.m.recepteur = self.m.ecrit
+        message = actions.installer(self.m)
+        self.assertIn(["snap", "refresh", "authd-msentraid"], self.m.modifiantes())
+        self.assertIn("authd 0.7.0 et le module Entra 0.5.1", message)
+        self.assertEqual(etat.lire(self.m)["installer"]["module"], "0.5.1")
+        self.assertFalse([e for e in self.m.evenements if e[0] == "avertissement"])
+
+    def test_avertit_si_trop_ancien(self):
+        self.m.versions["authd-msentraid"] = "0.4.0"
+        self.m.recepteur = self.m.ecrit
+        actions.installer(self.m)
+        avertissements = [t for type_, t in self.m.evenements if type_ == "avertissement"]
+        self.assertEqual(len(avertissements), 1)
+        self.assertIn("0.4.0 (il faut 0.5.0)", avertissements[0])
+
     def test_refus_avant_24_04(self):
         for version in ("22.04", "20.04", None):
             self.ecrire("/etc/os-release", f'VERSION_ID="{version}"\n' if version else "")
@@ -235,6 +254,40 @@ class TestConfigurer(Base):
                       {"groupes": ["Mauvais Nom"]}):
             with self.subTest(extra=extra), self.assertRaises(ErreurSesame):
                 self.construire(**dict({"compte_local": A}, **extra))
+
+    def test_connexion_par_mot_de_passe_par_defaut(self):
+        c = self.construire(compte_local=A)
+        self.assertEqual(c.connexion, "mot-de-passe")
+        message = actions.configurer(self.m, c)
+        self.assertIn("comme sur Windows", message)
+        broker = self.lire(chemins.BROKER_CONF)
+        self.assertIn("register_device = true\n", broker)
+        self.assertIn("entra_auth = true\n", broker)
+        self.assertIn("device_code = true\n", broker)
+        self.assertIn("connexion = mot-de-passe\n", self.lire(chemins.SESAME_CONF))
+        self.assertEqual(etat.lire(self.m)["configurer"]["connexion"], "mot-de-passe")
+
+    def test_connexion_par_code(self):
+        actions.configurer(self.m, self.construire(compte_local=A, connexion="code"))
+        broker = self.lire(chemins.BROKER_CONF)
+        self.assertIn("register_device = false\n", broker)
+        self.assertIn("entra_auth = false\n", broker)
+        self.assertEqual(etat.lire(self.m)["configurer"]["connexion"], "code")
+        self.assertEqual(self.construire(compte_local=A).connexion, "code")  # le choix enregistré est gardé
+
+    def test_connexion_inconnue(self):
+        with self.assertRaises(ErreurSesame):
+            self.construire(compte_local=A, connexion="windows")
+
+    def test_mot_de_passe_refuse_si_trop_ancien(self):
+        self.m.versions["authd"] = "0.6.9"
+        with self.assertRaises(ErreurSesame) as e:
+            actions.configurer(self.m, self.construire(compte_local=A))
+        self.assertIn("authd 0.6.9 (il faut 0.7.0)", str(e.exception))
+        self.assertIn("Code sur le téléphone", str(e.exception))
+        self.assertFalse(self.existe(chemins.SESAME_CONF))
+        self.assertEqual(self.m.modifiantes(), [])
+        actions.configurer(self.m, self.construire(compte_local=A, connexion="code"))  # le mode code reste possible
 
     def test_module_non_installe(self):
         self.m.supprimer(chemins.BROKER_MODELE)

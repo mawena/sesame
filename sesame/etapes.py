@@ -33,8 +33,8 @@ ETAPES = [
           "Indique à authd votre annuaire et votre application Entra. Vous seul pourrez vous connecter par Entra "
           "sur ce poste.", "configurer"),
     Etape("premiere_connexion", "Première connexion par Entra",
-          "Ouvrez une session par Entra une première fois : « Non listé ? », votre compte, Microsoft Entra ID, "
-          "puis validez le code sur le téléphone et choisissez un mot de passe local.", None),
+          "Ouvrez une session par Entra une première fois : « Non listé ? », votre adresse pro, Microsoft Entra ID, "
+          "puis votre mot de passe Entra et la validation sur le téléphone, comme sur Windows.", None),
     Etape("reprise", "Reprendre le compte local",
           "Le compte Entra prend l'UID, le dossier personnel, les groupes et la crontab du compte local. "
           "De préférence au prochain démarrage, quand aucune session n'est ouverte.", "reprise"),
@@ -54,6 +54,7 @@ PREREQUIS = {
     "verification": ["reprise"],
 }
 TITRES = {e.id: e.titre for e in ETAPES}
+NOMS_CONNEXION = {cfg.MOT_DE_PASSE: "mot de passe", cfg.CODE: "code sur le téléphone"}
 
 
 def _config(systeme):
@@ -104,7 +105,14 @@ def _installer(systeme, c):
         manque.append("le module authd-msentraid")
     if manque:
         return A_FAIRE, "Manque : " + " et ".join(manque) + "."
-    return FAIT, "authd et le module Entra sont installés."
+    versions = cfg.versions_installees(systeme)
+    installes = (f"authd {cfg.texte_version(versions['authd'])} et le module Entra "
+                 f"{cfg.texte_version(versions['module'])} sont installés.")
+    trop = cfg.trop_anciens(versions) if c.connexion == cfg.MOT_DE_PASSE else ""
+    if trop:
+        return FAIT, (f"{installes} Trop ancien pour la connexion par mot de passe : {trop}. "
+                      "Relancez cette étape pour mettre à jour.")
+    return FAIT, installes
 
 
 def _configurer(systeme, c):
@@ -116,6 +124,10 @@ def _configurer(systeme, c):
         manque.append("sesame.conf n'a pas de locataire et de client valides")
     if not systeme.service_actif(chemins.SERVICE_BROKER):
         manque.append("le service du module n'est pas actif")
+    note = etat.lire(systeme).get("configurer")
+    if not manque and isinstance(note, dict) and note.get("connexion", cfg.CODE) != enregistre.connexion:
+        manque.append(f"le mode de connexion a changé ({NOMS_CONNEXION.get(note.get('connexion', cfg.CODE), '?')} → "
+                      f"{NOMS_CONNEXION[enregistre.connexion]}) : relancez cette étape")
     return (A_FAIRE, "À faire : " + " ; ".join(manque) + ".") if manque else (FAIT, "La connexion Entra est configurée.")
 
 

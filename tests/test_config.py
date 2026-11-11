@@ -67,8 +67,57 @@ class TestBroker(Base):
             "[users]\nallowed_users = OWNER\n"
             f"owner = {N}\n"
             "home_base_dir = /home\nowner_extra_groups = sudo,docker\n\n"
-            "[msentraid]\nregister_device = false\n\n"
-            "[flows]\nentra_auth = false\n"))
+            "[msentraid]\nregister_device = true\n\n"
+            "[flows]\ndevice_code = true\nentra_auth = true\n"))
+
+    def test_texte_broker_code(self):
+        c = cfg.Config(LOCATAIRE, CLIENT, N, A, U, U, H, "secours", [], cfg.CODE)
+        self.assertTrue(cfg.texte_broker(c).endswith(
+            "[msentraid]\nregister_device = false\n\n[flows]\ndevice_code = true\nentra_auth = false\n"))
+
+
+class TestConnexion(Base):
+    def test_valider(self):
+        self.assertEqual(cfg.Config().connexion, cfg.MOT_DE_PASSE)
+        for bon in ("mot-de-passe", "code"):
+            self.assertTrue(cfg.valider_connexion(bon))
+        for faux in ("", None, "Code", "windows"):
+            self.assertFalse(cfg.valider_connexion(faux), faux)
+
+    def test_sesame_conf(self):
+        c = cfg.Config(LOCATAIRE, CLIENT, N, A, U, U, H, "secours", [], cfg.CODE)
+        cfg.ecrire(self.m, c)
+        self.assertIn("connexion = code\n", self.lire(chemins.SESAME_CONF))
+        self.assertEqual(cfg.charger(self.m).connexion, cfg.CODE)
+
+    def test_sesame_conf_1_0_ou_valeur_inconnue(self):
+        for valeur in ("", "connexion = windows\n"):
+            self.ecrire(chemins.SESAME_CONF, f"[entra]\nlocataire = {LOCATAIRE}\n{valeur}")
+            self.assertEqual(cfg.charger(self.m).connexion, cfg.MOT_DE_PASSE, valeur)
+
+    def test_version(self):
+        self.assertEqual(cfg.version("0.7.1~24.04"), (0, 7, 1))
+        self.assertEqual(cfg.version("0.5.0+git3"), (0, 5, 0))
+        self.assertEqual(cfg.version("1.2"), (1, 2, 0))
+        for faux in ("", None, "v1", "abc"):
+            self.assertIsNone(cfg.version(faux), faux)
+        self.assertEqual(cfg.texte_version((0, 7, 0)), "0.7.0")
+        self.assertEqual(cfg.texte_version(None), "?")
+
+    def test_versions_installees(self):
+        self.m.paquets.add("authd")
+        self.m.snaps.add("authd-msentraid")
+        self.assertEqual(cfg.versions_installees(self.m), {"authd": (0, 7, 1), "module": (0, 5, 0)})
+        self.m.paquets.clear()
+        self.m.snaps.clear()
+        self.assertEqual(cfg.versions_installees(self.m), {"authd": None, "module": None})
+
+    def test_trop_anciens(self):
+        self.assertEqual(cfg.trop_anciens({"authd": (0, 7, 0), "module": (0, 5, 0)}), "")
+        self.assertEqual(cfg.trop_anciens({"authd": (1, 0, 0), "module": (0, 6, 2)}), "")
+        texte = cfg.trop_anciens({"authd": (0, 6, 3), "module": None})
+        self.assertIn("authd 0.6.3 (il faut 0.7.0)", texte)
+        self.assertIn("le module Entra ? (il faut 0.5.0)", texte)
 
 
 class TestDefauts(Base):

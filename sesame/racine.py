@@ -55,6 +55,7 @@ def analyseur():
     c.add_argument("--compte-local")
     c.add_argument("--secours")
     c.add_argument("--groupes")
+    c.add_argument("--connexion", choices=cfg.CONNEXIONS)
     r = sous.add_parser("reprise")
     mode = r.add_mutually_exclusive_group(required=True)
     for nom in ("maintenant", "au-demarrage", "annuler-programmation", "execution-demarrage"):
@@ -76,7 +77,7 @@ def _secours(systeme, args, entree):
 def _configurer(systeme, args, entree):
     groupes = cfg.decouper_groupes(args.groupes) if args.groupes is not None else None
     c = actions.construire_config(systeme, args.locataire, args.client, args.compte, args.compte_local,
-                                  args.secours, groupes)
+                                  args.secours, groupes, args.connexion)
     return True, actions.configurer(systeme, c)
 
 

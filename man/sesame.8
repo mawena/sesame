@@ -1,4 +1,4 @@
-.TH SESAME 8 "11 novembre 2026" "sesame 1.0.0" "Administration système"
+.TH SESAME 8 "novembre 2026" "sesame 1.1.0" "Administration système"
 .SH NOM
 sesame \- connecte un poste Ubuntu à Microsoft Entra ID (authd) et fait reprendre le compte local par le compte Entra
 .SH SYNOPSIS
@@ -55,14 +55,28 @@ l'entrée standard de l'assistant root ; il n'est jamais écrit.
 Quitte le domaine Active Directory et retire sssd de la configuration, si le poste en fait partie.
 .TP
 .B installer
-Ajoute le PPA d'authd, installe authd et le snap authd\-msentraid.
+Ajoute le PPA d'authd, installe ou met à jour authd (\fBapt\-get install\fR) et le snap authd\-msentraid
+(\fBsnap refresh\fR s'il est déjà installé). La connexion par mot de passe demande authd 0.7.0 et authd\-msentraid
+0.5.0 ou plus ; l'étape signale une version trop ancienne.
 .TP
 .B configurer
 Écrit
 .I /etc/sesame/sesame.conf
 et la configuration du module Entra à partir de l'ID du locataire, de l'ID client et du compte Entra
 .RB ( \-\-locataire ", " \-\-client ", " \-\-compte ", " \-\-compte\-local ", " \-\-secours ", " \-\-groupes ).
-Les valeurs manquantes sont demandées.
+.BR \-\-connexion " " mot\-de\-passe | code
+choisit le mode de connexion (voir
+.BR sesame.conf ,
+clé
+.IR connexion ).
+Sans l'option : la valeur déjà enregistrée, sinon
+.BR mot\-de\-passe .
+Les valeurs manquantes sont demandées, y compris le mode en mode interactif. Le mode
+.B mot\-de\-passe
+est refusé si authd ou authd\-msentraid est trop ancien ; utilisez alors
+.BR code .
+Une installation configurée par la version 1.0.0 voit cette étape repasser à faire (le mode de connexion a changé) :
+la relancer suffit ; authd demandera de se reconnecter par Entra.
 .TP
 .B reprise
 Le compte Entra reprend l'UID, le GID, le dossier et la crontab du compte local, qui disparaît. Options :
@@ -83,9 +97,42 @@ désinstallé.
 Contrôles sans root (compte, dossier, groupes, crontab, services, compte de secours).
 .TP
 .B portail
-Explique, pas à pas, la création de l'application dans le portail Microsoft Entra.
+Explique, pas à pas, la création de l'application dans le portail Microsoft Entra et ses réglages (URI de redirection
+client public, inscription des appareils, vérification du compte, accès conditionnel).
 .PP
-La première connexion par Entra se fait à l'écran d'accueil ; l'assistant graphique l'explique.
+La première connexion par Entra se fait à l'écran d'accueil (GDM) : « Non listé ? », l'adresse pro, « Microsoft Entra
+ID », puis le mot de passe Entra et la double authentification (mode
+.BR mot\-de\-passe )
+ou le code à saisir sur le téléphone suivi du choix d'un mot de passe local (mode
+.BR code ).
+L'assistant graphique l'explique.
+.SH MODES DE CONNEXION
+Réglage
+.I connexion
+de la section
+.B [entra]
+de
+.IR /etc/sesame/sesame.conf .
+.TP
+.B mot\-de\-passe
+(défaut) Comme sur Windows : adresse pro, mot de passe Entra, puis double authentification (validation dans Microsoft
+Authenticator, code à usage unique, ou méthode sans mot de passe : clé FIDO2, Authenticator sans mot de passe, Temporary
+Access Pass). Requiert authd 0.7.0 et authd\-msentraid 0.5.0 ou plus, une méthode de double authentification
+enregistrée sur le compte, et un compte non fédéré par AD FS. Sésame écrit dans broker.conf
+.B register_device = true
+(le PC est inscrit dans Entra à la première connexion et apparaît dans Entra, Appareils),
+.B device_code = true
+et
+.B entra_auth = true .
+Le code d'appareil reste proposé en secours.
+.TP
+.B code
+Comportement de la version 1.0.0 : code d'appareil à saisir sur le téléphone, puis choix d'un mot de passe local.
+broker.conf :
+.BR register_device " = false, " device_code " = true, " entra_auth " = false."
+.PP
+Hors connexion, authd garde une empreinte salée du mot de passe pour laisser entrer. Si la connexion s'est faite sans
+mot de passe (clé FIDO2, Authenticator), authd demande de choisir un mot de passe local à la première connexion.
 .SH OPTIONS
 .TP
 .B \-\-json
@@ -98,10 +145,10 @@ La première connexion par Entra se fait à l'écran d'accueil ; l'assistant gra
 .SH FICHIERS
 .TP
 .I /etc/sesame/sesame.conf
-Réglages (locataire, client, compte Entra, compte local, compte de secours, groupes).
+Réglages (locataire, client, compte Entra, mode de connexion, compte local, compte de secours, groupes).
 .TP
 .I /var/lib/sesame/etat.json
-Ce que Sésame a fait et quand.
+Ce que Sésame a fait et quand, dont le mode de connexion configuré.
 .TP
 .I /var/lib/sesame/sauvegardes/
 Sauvegardes, une par étape. Conservées à la purge du paquet.
@@ -119,6 +166,7 @@ Résultat de la dernière reprise.
 .nf
 sesame
 sesame configurer
+sesame configurer \-\-connexion code
 sesame reprise \-\-au\-demarrage
 sesame annuler\-reprise
 sudo journalctl \-u authd \-u snap.authd\-msentraid.authd\-msentraid.service \-u sesame\-reprise

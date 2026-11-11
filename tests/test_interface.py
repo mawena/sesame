@@ -227,6 +227,27 @@ class TestFenetre(Injection):
         f.lancer_etape('configurer')
         self.assertEqual(lancements, [])  # le client est vide
 
+    def test_configurer_passe_le_mode_de_connexion(self):
+        f = self.construire()
+        self.assertEqual(f.valeur_connexion(), 'mot-de-passe')  # FauxConfig n'a pas de mode : comme sur Windows
+        f.champs['client'].set_text('6' * 36)
+        lancements = []
+        f.executer = lambda *a, **k: lancements.append(a)
+        f.lancer_etape('configurer')
+        mode = lambda arguments: arguments[arguments.index('--connexion') + 1]
+        self.assertEqual(mode(lancements[0][1]), 'mot-de-passe')
+        f.connexion.set_selected(1)
+        f.lancer_etape('configurer')
+        self.assertEqual(mode(lancements[1][1]), 'code')
+
+    def test_texte_premiere_connexion(self):
+        from sesame.interface import dialogues
+        texte = dialogues.texte_premiere_connexion('a@b.com')
+        self.assertIn('(a@b.com)', texte)
+        self.assertIn('mot de passe Entra', texte)
+        self.assertNotIn('QR code', texte)
+        self.assertIn('QR code', dialogues.texte_premiere_connexion('', 'code'))
+
     def test_une_seule_action(self):
         f = self.construire()
         f.lanceur.processus = object()  # une action tourne
