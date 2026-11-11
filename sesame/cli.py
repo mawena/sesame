@@ -20,7 +20,9 @@ RACINE_INSTALLEE = "/usr/libexec/sesame/sesame-racine"
 PREMIERE_CONNEXION = (
     "Première connexion : déconnectez-vous, choisissez votre compte à l'écran d'accueil, tapez le mot de passe Entra\n"
     "de votre adresse pro et validez sur le téléphone. Le poste est inscrit dans Entra à cette première connexion ;\n"
-    "vous choisissez ensuite un code PIN (Windows Hello) pour les connexions suivantes.")
+    "vous choisissez ensuite un code PIN (Windows Hello) pour les connexions suivantes.\n"
+    "Le trousseau GNOME (« Connexion ») reste chiffré avec l'ancien mot de passe local : changez-le dans\n"
+    "« Mots de passe et clés » pour y mettre le mot de passe Entra, sinon les applications le redemandent.")
 
 
 def chemin_racine():

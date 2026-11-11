@@ -471,6 +471,7 @@ class TestFenetre(Injection):
         texte = dialogues.texte_premiere_connexion('a@b.com')
         self.assertIn('mot de passe Entra de a@b.com', texte)
         self.assertIn('PIN', texte)
+        self.assertIn('Mots de passe et clés', texte)
 
     def test_journal(self):
         f = self.construire()

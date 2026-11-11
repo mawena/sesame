@@ -122,12 +122,38 @@ class TestQuitterAd(BaseActions):
         self.assertNotIn("sss", self.lire(chemins.NSSWITCH))
         self.assertIn("quitter_ad", etat.lire(self.m))
 
+    def test_arrete_sssd_et_ses_sockets(self):
+        self.m.actives.update(actions.UNITES_SSSD)
+        self.m.actifs.update(["sssd.service", "sssd-nss.socket", "sssd-pam.socket"])
+        actions.quitter_ad(self.m)
+        self.assertIn(["systemctl", "disable", "--now"] + actions.UNITES_SSSD, self.m.appels)
+        self.assertIn(["systemctl", "reset-failed"] + actions.UNITES_SSSD, self.m.appels)
+        self.assertFalse(self.m.actives & set(actions.UNITES_SSSD))
+        self.assertFalse(self.m.actifs & set(actions.UNITES_SSSD))
+        for socket in ("sssd-nss.socket", "sssd-pam.socket", "sssd-pam-priv.socket", "sssd-autofs.socket",
+                       "sssd-pac.socket", "sssd-ssh.socket", "sssd-sudo.socket"):
+            self.assertIn(socket, actions.UNITES_SSSD)
+
+    def test_unites_absentes_ignorees(self):
+        self.m.unites_absentes = {"sssd-pac.socket", "sssd-sudo.socket"}
+        actions.quitter_ad(self.m)
+        attendues = [u for u in actions.UNITES_SSSD if u not in self.m.unites_absentes]
+        self.assertIn(["systemctl", "disable", "--now"] + attendues, self.m.appels)
+        self.assertIn(["systemctl", "reset-failed"] + attendues, self.m.appels)
+
+    def test_sans_sssd(self):
+        self.m.unites_absentes = set(actions.UNITES_SSSD)
+        actions.quitter_ad(self.m)
+        self.assertFalse(any(a[:2] in (["systemctl", "disable"], ["systemctl", "reset-failed"]) for a in self.m.appels))
+        self.assertIn("quitter_ad", etat.lire(self.m))
+
 
 class TestOutils(BaseActions):
     def test_installation_et_plage(self):
         msg = actions.installer_outils(self.m, A)
         self.assertIn("outils", msg)
-        self.assertIn(["apt-get", "install", "-y", "podman", "uidmap", "git", "make"], self.m.appels)
+        self.assertIn(["apt-get", "install", "-y"] + actions.OPTIONS_APT + ["podman", "uidmap", "git", "make"],
+                      self.m.appels)
         self.assertIn(["usermod", "--add-subuids", "100000-165535", "--add-subgids", "100000-165535", A],
                       self.m.appels)
         self.assertTrue(set(himmelblau.OUTILS) <= self.m.paquets)
@@ -161,7 +187,7 @@ class TestInstaller(BaseActions):
         msg = actions.installer(self.m, PAQUETS_DIR)
         self.assertEqual(msg, "Himmelblau 4.0.1 est installé.")
         self.assertEqual(self.m.paquets, set(himmelblau.PAQUETS))
-        self.assertEqual(self.sorties_apt(), [["apt-get", "install", "-y"] + [
+        self.assertEqual(self.sorties_apt(), [["apt-get", "install", "-y"] + actions.OPTIONS_APT + [
             f"{PAQUETS_DIR}/{p}_4.0.1_amd64.deb" for p in himmelblau.PAQUETS]])
         self.assertIn(["dpkg-deb", "-f", f"{PAQUETS_DIR}/himmelblau_4.0.1_amd64.deb", "Package"], self.m.appels)
         self.assertIn("installer", etat.lire(self.m))
@@ -199,8 +225,8 @@ class TestInstaller(BaseActions):
         self.fabriquer_debs(noms=himmelblau.PAQUETS + ["himmelblau-apparmor"])
         self.ecrire("/sys/module/apparmor/version", "3\n")
         actions.installer(self.m, PAQUETS_DIR)
-        self.assertIn(["apt-get", "install", "-y", f"{PAQUETS_DIR}/himmelblau-apparmor_4.0.1_amd64.deb"],
-                      self.m.appels)
+        self.assertIn(["apt-get", "install", "-y"] + actions.OPTIONS_APT
+                      + [f"{PAQUETS_DIR}/himmelblau-apparmor_4.0.1_amd64.deb"], self.m.appels)
         self.assertIn("himmelblau-apparmor", self.m.paquets)
 
     def test_apparmor_non_construit_ou_absent(self):
@@ -219,6 +245,86 @@ class TestInstaller(BaseActions):
         self.m.apparmor_echoue = True
         actions.installer(self.m, PAQUETS_DIR)
         self.assertIn("avertissement", [t for t, _ in self.m.evenements])
+
+    CUPSD = "/etc/apparmor.d/local/usr.sbin.cupsd"
+    CHKPWD = "/etc/apparmor.d/local/unix-chkpwd"
+    REGLES = "/var/cache/nss-himmelblau/** rwk,\n@{run}/himmelblaud/socket wr,\n"
+
+    def preparer_apparmor(self, cupsd):
+        self.fabriquer_debs(noms=himmelblau.PAQUETS + ["himmelblau-apparmor"])
+        self.ecrire("/sys/module/apparmor/version", "3\n")
+        self.m.conffiles["himmelblau-apparmor"] = {self.CUPSD: self.REGLES, self.CHKPWD: "/run/x r,\n"}
+        if cupsd is not None:
+            self.ecrire(self.CUPSD, cupsd)
+
+    def avertissements(self):
+        return [t for ty, t in self.m.evenements if ty == "avertissement"]
+
+    def test_vierge(self):
+        for texte in ("", "\n  \n", "# Site-specific additions\n\n# autre\n"):
+            self.assertTrue(actions._vierge(texte), texte)
+        for texte in ("/usr/bin/x rix,\n", "#include <abstractions/base>\n", "# note\ninclude <local/x>\n"):
+            self.assertFalse(actions._vierge(texte), texte)
+
+    def test_fichier_vide_prend_la_version_du_paquet(self):
+        # cas du 11/11/2026 : cups crée usr.sbin.cupsd vide, dpkg demandait quoi faire et le paquet restait « iU »
+        self.preparer_apparmor("")
+        actions.installer(self.m, PAQUETS_DIR)
+        self.assertEqual(self.lire(self.CUPSD), self.REGLES)
+        self.assertEqual(self.lire(self.CHKPWD), "/run/x r,\n")
+        self.assertIn("himmelblau-apparmor", self.m.paquets)
+        self.assertNotIn("himmelblau-apparmor", self.m.etats)
+        self.assertFalse(self.existe(self.CUPSD + ".dpkg-dist"))
+        self.assertFalse(self.existe(actions.EXTRACTION))
+        self.assertEqual(self.avertissements(), [])
+
+    def test_fichier_de_commentaires_seulement(self):
+        self.preparer_apparmor("# Site-specific additions and overrides for usr.sbin.cupsd.\n\n")
+        actions.installer(self.m, PAQUETS_DIR)
+        self.assertEqual(self.lire(self.CUPSD), self.REGLES)
+        self.assertEqual(self.avertissements(), [])
+
+    def test_fichier_modifie_garde_avec_avertissement(self):
+        self.preparer_apparmor("/opt/imprimante/bin rix,\n")
+        actions.installer(self.m, PAQUETS_DIR)
+        self.assertEqual(self.lire(self.CUPSD), "/opt/imprimante/bin rix,\n")
+        self.assertEqual(self.lire(self.CUPSD + ".dpkg-dist"), self.REGLES)
+        self.assertIn("himmelblau-apparmor", self.m.paquets)
+        self.assertTrue(any(".dpkg-dist" in t for t in self.avertissements()))
+
+    def test_sans_les_options_dpkg_le_paquet_resterait_a_moitie_installe(self):
+        # garde-fou de la simulation : sans --force-confold, la question de dpkg bloque comme sur le vrai poste
+        self.preparer_apparmor("/opt/imprimante/bin rix,\n")
+        r = self.m.lancer(["apt-get", "install", "-y", f"{PAQUETS_DIR}/himmelblau-apparmor_4.0.1_amd64.deb"])
+        self.assertFalse(r.ok)
+        self.assertEqual(self.m.etats["himmelblau-apparmor"], "iU")
+
+    def test_reparation_d_un_paquet_a_moitie_installe(self):
+        self.preparer_apparmor("")
+        self.m.paquets.update(himmelblau.PAQUETS)
+        self.m.etats["himmelblau-apparmor"] = "iU"
+        actions.installer(self.m, PAQUETS_DIR)
+        reparation = ["dpkg", "--force-confdef", "--force-confold", "--configure", "-a"]
+        self.assertIn(reparation, self.m.appels)
+        self.assertLess(self.m.appels.index(reparation), self.m.appels.index(self.sorties_apt()[0]))
+        self.assertNotIn("himmelblau-apparmor", self.m.etats)
+        self.assertIn("himmelblau-apparmor", self.m.paquets)
+        self.assertEqual(self.lire(self.CUPSD), self.REGLES)
+
+    def test_pas_de_reparation_si_tout_va_bien(self):
+        self.preparer_apparmor(None)
+        actions.installer(self.m, PAQUETS_DIR)
+        self.assertFalse(any(a[0] == "dpkg" for a in self.m.appels))
+
+    def test_apparmor_reste_a_moitie_installe_est_retire(self):
+        self.preparer_apparmor(None)
+        self.m.apparmor_a_moitie = True
+        actions.installer(self.m, PAQUETS_DIR)
+        self.assertIn(["dpkg", "--remove", "himmelblau-apparmor"], self.m.appels)
+        self.assertNotIn("himmelblau-apparmor", self.m.etats)
+        self.assertNotIn("himmelblau-apparmor", self.m.paquets)
+        self.assertTrue(any("retiré" in t for t in self.avertissements()))
+        self.assertTrue(set(himmelblau.PAQUETS) <= self.m.paquets)
 
     def test_echec_de_l_installation(self):
         self.fabriquer_debs()
@@ -248,6 +354,74 @@ class TestConfigurer(BaseActions):
         self.assertEqual((c.compte, c.compte_local, c.uid, c.dossier), (N, A, 1000, "/home/" + A))
         self.assertNotIn("avertissement", [t for t, _ in self.m.evenements])
         self.assertIn("configurer", etat.lire(self.m))
+
+    LIEN = f"/home/{N}"
+    UUID_DIR = "/home/62c21496-4024-40b9-b533-42b60ccae127"
+
+    def test_dossier_de_l_adresse_mene_au_dossier_local(self):
+        actions.configurer(self.m, N, A)
+        conf = self.lire(himmelblau.CONFIG)
+        self.assertEqual((himmelblau.lire_config(conf, "home_attr"), himmelblau.lire_config(conf, "home_alias")),
+                         ("SPN", "UUID"))
+        self.assertEqual(self.m.lire_lien(self.LIEN), A)  # lien relatif
+        self.assertEqual(self.lire(f"{self.LIEN}/doc.txt"), "document important\n")
+        self.assertTrue(himmelblau.dossier_relie(self.m, N, "/home/" + A))
+        actions.configurer(self.m, N, A)  # deuxième passage : rien ne bouge
+        self.assertEqual(self.m.lire_lien(self.LIEN), A)
+        self.assertEqual(self.avertissements(), [])
+
+    def avertissements(self):
+        return [t for ty, t in self.m.evenements if ty == "avertissement"]
+
+    def test_ancien_dossier_uuid_renomme_jamais_supprime(self):
+        # cas du 11/11/2026 : /home/<adresse> -> <UUID>, un vrai dossier créé depuis /etc/skel à une connexion
+        self.ecrire(f"{self.UUID_DIR}/.bashrc", "skel\n")
+        self.m.creer_lien(self.UUID_DIR.rsplit("/", 1)[1], self.LIEN)
+        actions.configurer(self.m, N, A)
+        self.assertEqual(self.m.lire_lien(self.LIEN), A)
+        self.assertFalse(self.existe(self.UUID_DIR))
+        anciens = [n for n in self.m.lister("/home") if n.startswith(self.UUID_DIR.rsplit("/", 1)[1] + ".avant-sesame-")]
+        self.assertEqual(len(anciens), 1)
+        self.assertEqual(self.lire(f"/home/{anciens[0]}/.bashrc"), "skel\n")
+        self.assertTrue(any("rien n'est supprimé" in t for t in self.avertissements()))
+
+    def test_vrai_dossier_a_l_adresse_renomme(self):
+        self.ecrire(f"{self.LIEN}/note.txt", "x\n")
+        actions.configurer(self.m, N, A)
+        self.assertEqual(self.m.lire_lien(self.LIEN), A)
+        anciens = [n for n in self.m.lister("/home") if n.startswith(N + ".avant-sesame-")]
+        self.assertEqual(len(anciens), 1)
+        self.assertEqual(self.lire(f"/home/{anciens[0]}/note.txt"), "x\n")
+        self.assertEqual(len(self.avertissements()), 1)
+
+    def test_lien_vers_autre_chose_refait(self):
+        self.m.creer_lien("/nulle/part", self.LIEN)
+        actions.configurer(self.m, N, A)
+        self.assertEqual(self.m.lire_lien(self.LIEN), A)
+        self.assertEqual(self.avertissements(), [])
+
+    def test_dossier_uuid_non_pointe_du_compte_renomme_celui_d_un_autre_garde(self):
+        autre = "/home/0f0e0d0c-0b0a-4908-8706-050403020100"
+        self.ecrire(f"{self.UUID_DIR}/a", "1\n")
+        self.ecrire(f"{autre}/b", "2\n")
+        self.m.proprietaires[autre] = 2000
+        actions.configurer(self.m, N, A)
+        self.assertFalse(self.existe(self.UUID_DIR))
+        self.assertEqual(self.lire(f"{autre}/b"), "2\n")
+        self.assertTrue(self.existe("/home/" + A + "/doc.txt"))
+
+    def test_detection_demande_le_lien(self):
+        from sesame import etapes
+        actions.configurer(self.m, N, A)
+        c = cfg.charger(self.m)
+        self.assertEqual(etapes.DETECTIONS["configurer"](self.m, c)[0], etapes.FAIT)
+        self.m.supprimer(self.LIEN)
+        statut, detail = etapes.DETECTIONS["configurer"](self.m, c)
+        self.assertEqual(statut, etapes.A_FAIRE)
+        self.assertIn("ne mène pas", detail)
+        actions.configurer(self.m, N, A)
+        self.ecrire(himmelblau.CONFIG, self.lire(himmelblau.CONFIG).replace("home_attr = SPN", "home_attr = UUID"))
+        self.assertIn("dossier personnel", etapes.DETECTIONS["configurer"](self.m, c)[1])
 
     def test_himmelblau_conf_existant_preserve(self):
         self.ecrire(himmelblau.CONFIG, "[global]\nlog_level = debug\ndomain = vieux.fr\n[autre]\nx = 1\n")
@@ -289,6 +463,7 @@ class TestConfigurer(BaseActions):
         self.ecrire(chemins.PAM_COMMON_AUTH, "auth pam_unix.so\n")
         actions.configurer(self.m, N, A)
         self.assertIn(["pam-auth-update", "--enable", "himmelblau"], self.m.appels)
+        self.assertEqual(self.m.lire_lien(f"/home/{N}"), A)  # lien du dossier refait
         self.assertIn("pam_himmelblau", self.lire(chemins.PAM_COMMON_AUTH))
         self.assertFalse(nsswitch.manque(self.lire(chemins.NSSWITCH), "himmelblau"))
         self.assertEqual([t for ty, t in self.m.evenements if ty == "avertissement"], [])
@@ -381,8 +556,8 @@ class TestRejoindre(BaseActions):
         self.assertEqual(ordre, sorted(ordre))
         # les outils (premier apt-get) avant les paquets compilés (deuxième)
         apt = [a for a in self.m.modifiantes() if a[0] == "apt-get"]
-        self.assertEqual(apt[0][3:], list(himmelblau.OUTILS))
-        self.assertTrue(apt[1][3].endswith(".deb"))
+        self.assertEqual(apt[0][3:], actions.OPTIONS_APT + list(himmelblau.OUTILS))
+        self.assertTrue(apt[1][-1].endswith(".deb"))
 
     def test_relance_apres_compilation(self):
         self.peupler(secours=False)
@@ -402,8 +577,8 @@ class TestRejoindre(BaseActions):
         self.m.domaines_joints = ["cofinacorp.com"]
         self.fabriquer_debs()
         # commandes modifiantes : useradd, chpasswd -e, hostnamectl, realm leave, systemctl disable sssd,
-        # pam-auth-update, apt-get outils (6), usermod subuids (7), apt-get install des .deb (8)
-        self.m.panne_a = 8
+        # systemctl reset-failed, pam-auth-update, apt-get outils (7), usermod subuids (8), apt-get install des .deb (9)
+        self.m.panne_a = 9
         with self.assertRaises(ErreurSesame) as e:
             actions.rejoindre(self.m, N, NOM, paquets=PAQUETS_DIR)
         self.assertIn("a échoué", str(e.exception))
@@ -497,6 +672,15 @@ class TestPremiereConnexionEtDesactiver(BaseActions):
         self.assertTrue(self.existe(himmelblau.CONFIG))
         self.assertNotIn("configurer", etat.lire(self.m))
         self.assertNotIn("pam_himmelblau", self.lire(chemins.PAM_COMMON_AUTH))
+        self.assertFalse(self.existe(f"/home/{N}"))  # le lien vers le dossier local est retiré
+        self.assertTrue(self.existe(f"/home/{A}/doc.txt"))
+
+    def test_desactiver_garde_un_lien_qui_mene_ailleurs(self):
+        self.config()
+        self.installer_himmelblau(lier=False)
+        self.m.creer_lien("/srv/autre", f"/home/{N}")
+        actions.desactiver(self.m)
+        self.assertEqual(self.m.lire_lien(f"/home/{N}"), "/srv/autre")
 
     def test_desactiver_puis_rejoindre_retablit_tout(self):
         self.peupler()

@@ -165,6 +165,28 @@ class Systeme:
         else:
             _copie(s, d)
 
+    def lire_lien(self, p):
+        """Cible d'un lien symbolique, telle qu'elle est écrite ; None si `p` n'est pas un lien."""
+        try:
+            return os.readlink(self.chemin(p))
+        except OSError:
+            return None
+
+    def creer_lien(self, cible, p, uid=None, gid=None):
+        """Crée le lien `p` vers `cible` (écrite telle quelle) ; s'il est root, le donne à `uid`:`gid`."""
+        c = self.chemin(p)
+        c.parent.mkdir(parents=True, exist_ok=True)
+        os.symlink(cible, c)
+        if uid is not None and os.geteuid() == 0:
+            os.lchown(c, uid, -1 if gid is None else gid)
+
+    def proprietaire(self, p):
+        """UID du propriétaire de `p` (sans suivre un lien), ou None s'il n'existe pas."""
+        try:
+            return os.lstat(self.chemin(p)).st_uid
+        except OSError:
+            return None
+
     def est_root(self):
         return os.geteuid() == 0
 

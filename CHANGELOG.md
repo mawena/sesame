@@ -7,6 +7,27 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [2.0.2] - 2026-11-11
+
+### Corrigé
+
+- **Installation sans question de dpkg** : `apt-get install` passe `--force-confdef --force-confold`. Avant,
+  `himmelblau-apparmor` restait à moitié installé (« iU ») parce que dpkg demandait quoi faire de
+  `/etc/apparmor.d/local/usr.sbin.cupsd`, que cups crée vide, et que personne ne pouvait répondre sous pkexec ; chaque
+  `apt` suivant échouait. Un fichier de configuration vide (ou fait de commentaires) prend maintenant la version du
+  paquet ; un fichier modifié est gardé et la version du paquet est posée en `.dpkg-dist`, avec un avertissement.
+- Un paquet Himmelblau resté à moitié installé est réparé (`dpkg --configure -a`) avant l'installation ; si
+  `himmelblau-apparmor` ne peut toujours pas être configuré, il est retiré pour ne pas bloquer apt.
+- **Quitter l'AD arrête aussi les sockets de SSSD** (`sssd-nss`, `sssd-pam`, `sssd-pam-priv`, `sssd-autofs`,
+  `sssd-pac`, `sssd-ssh`, `sssd-sudo`) et efface leur état d'échec : ils échouaient à chaque démarrage.
+- **Un seul dossier personnel** : se connecter en tapant l'adresse pro ouvrait la session dans un nouveau dossier vide
+  (`/home/<adresse>` → `/home/<UUID>`, créé depuis `/etc/skel`). `himmelblau.conf` reçoit `home_attr = SPN` et
+  `home_alias = UUID`, et `/home/<adresse>` devient un lien vers le dossier du compte local ; un dossier déjà créé par
+  Himmelblau est renommé `<dossier>.avant-sesame-<date>`, jamais supprimé. « Désactiver » retire ce lien, et l'étape
+  « Configurer » n'est faite que si le lien est en place (relancer « Rejoindre » le corrige).
+- Le texte de première connexion signale que le trousseau GNOME (« Connexion ») reste chiffré avec l'ancien mot de passe
+  local : il se change dans « Mots de passe et clés ».
+
 ## [2.0.1] - 2026-11-11
 
 ### Corrigé

@@ -156,9 +156,16 @@ def _configurer(systeme, c):
     texte = systeme.lire(himmelblau.CONFIG)
     if not (himmelblau.lire_config(texte, "domain") and himmelblau.lire_config(texte, "user_map_file")):
         manque.append("himmelblau.conf n'a pas de domaine ni de user-map")
+    if not himmelblau.dossier_bien_range(texte):
+        manque.append("himmelblau.conf ne range pas le dossier personnel sous l'adresse")
     liens = himmelblau.lire_user_map(systeme.lire(himmelblau.USER_MAP))
     if not c.compte_local or c.compte_local not in liens:
         manque.append("aucun compte local n'est relié à une adresse Entra (user-map)")
+    else:
+        local = systeme.comptes_locaux().get(c.compte_local)
+        dossier = local.dossier if local else c.dossier
+        if not himmelblau.dossier_relie(systeme, liens[c.compte_local], dossier):
+            manque.append(f"le dossier de {liens[c.compte_local]} ne mène pas à {dossier}")
     if not systeme.service_actif("himmelblaud"):
         manque.append("le service himmelblaud n'est pas actif")
     if manque:

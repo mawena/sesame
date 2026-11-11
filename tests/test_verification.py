@@ -23,7 +23,7 @@ class TestVerification(Base):
         self.assertTrue(all(ok for ok, _ in res), res)
         textes = " | ".join(t for _, t in res)
         for attendu in ("himmelblaud", "pour passwd", "pour group", "pam_himmelblau", "user-map", "aad-tool",
-                        NOM, "secours"):
+                        NOM, "secours", f"Le dossier de {N} mène à /home/{A}"):
             self.assertIn(attendu, textes)
 
     def test_service_arrete(self):
@@ -71,3 +71,7 @@ class TestVerification(Base):
         self.assertTrue(verification.est_connecte(self.m, self.c))
         self.m.uid = 1001
         self.assertFalse(verification.est_connecte(self.m, self.c))
+
+    def test_lien_du_dossier(self):
+        self.m.supprimer(f"/home/{N}")
+        self.assertFalse(self.resultats()[f"Le dossier de {N} mène à /home/{A}"])

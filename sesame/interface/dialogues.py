@@ -60,7 +60,10 @@ def texte_premiere_connexion(compte):
             '3. Tapez le mot de passe Entra de %s, puis validez sur votre téléphone (Microsoft Authenticator), '
             'comme sur Windows.\n'
             '4. Le poste est inscrit dans Entra à cette première connexion ; choisissez ensuite un code PIN '
-            '(Windows Hello) pour les connexions suivantes.') % (compte or 'votre adresse pro')
+            '(Windows Hello) pour les connexions suivantes.\n'
+            '5. Le trousseau GNOME (« Connexion ») reste chiffré avec l’ancien mot de passe local : changez-le dans '
+            '« Mots de passe et clés » pour y mettre le mot de passe Entra, sinon les applications le '
+            'redemandent.') % (compte or 'votre adresse pro')
 
 
 def premiere_connexion(parent, compte, rappel_fait=None):

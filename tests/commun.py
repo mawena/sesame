@@ -36,6 +36,11 @@ class Machine(Systeme):
         self.pannes = []
         self.evenements = []
         self.apparmor_echoue = False
+        self.apparmor_a_moitie = False  # l'installation de himmelblau-apparmor le laisse dépaqueté (« iU »)
+        self.conffiles = {}       # paquet -> {chemin: contenu} (fichiers de configuration du .deb)
+        self.etats = {}           # paquet -> état dpkg forcé (« iU », « iF »…)
+        self.unites_absentes = set()
+        self.proprietaires = {}   # chemin -> UID (sinon U)
         self.aad_ok = True
         self.aad_present = True
 
@@ -45,6 +50,9 @@ class Machine(Systeme):
 
     def programme_present(self, nom):
         return self.aad_present if nom == "aad-tool" else True
+
+    def proprietaire(self, p):
+        return self.proprietaires.get(p, U) if self.existe(p) else None
 
     def lancer(self, argv, entree=None, direct=None):
         argv = [str(a) for a in argv]
@@ -62,7 +70,7 @@ class Machine(Systeme):
     @staticmethod
     def _lecture(argv):
         return (argv[0] in ("getent", "dpkg-query", "dpkg-deb") or argv[:2] in (["realm", "list"], ["aad-tool", "status"])
-                or (argv[0] == "systemctl" and argv[1].startswith("is-")) or (argv[0] == "crontab" and "-l" in argv))
+                or (argv[0] == "systemctl" and (argv[1].startswith("is-") or argv[1] == "list-unit-files")) or (argv[0] == "crontab" and "-l" in argv))
 
     def modifiantes(self):
         """Commandes lancées qui ne sont pas de simples lectures."""
@@ -95,25 +103,74 @@ class Machine(Systeme):
         return Resultat(0)
 
     def _dpkg_query(self, a, entree):
+        if a[-1] in self.etats and "-f=${Version}" not in a:
+            return Resultat(0, self.etats[a[-1]] + " ")
         if a[-1] not in self.paquets:
             return Resultat(1, "", "pas installé")
         return Resultat(0, self.versions.get(a[-1], "1.0")) if "-f=${Version}" in a else Resultat(0, "ii ")
 
+    def _poser(self, nom, garder):
+        """Pose les fichiers de configuration du paquet comme dpkg : un fichier du poste différent fait poser une
+        question, sans réponse possible sans `garder` (--force-confold) ; le paquet reste alors dépaqueté."""
+        for chemin, texte in self.conffiles.get(nom, {}).items():
+            if not self.existe(chemin):
+                self.ecrire(chemin, texte)
+            elif self.lire(chemin) != texte:
+                if not garder:
+                    self.etats[nom] = "iU"
+                    self.paquets.discard(nom)
+                    return False
+                self.ecrire(chemin + ".dpkg-dist", texte)
+        self.etats.pop(nom, None)
+        self.paquets.add(nom)
+        return True
+
     def _apt_get(self, a, entree):
         if a[0] == "install":
-            noms = []
-            for x in (x for x in a[1:] if not x.startswith("-")):
-                noms.append(x.rsplit("/", 1)[-1].split("_")[0] if x.endswith(".deb") else x)
+            noms, options, suite = [], [], iter(a[1:])
+            for x in suite:
+                if x == "-o":
+                    options.append(next(suite, ""))
+                elif not x.startswith("-"):
+                    noms.append(x.rsplit("/", 1)[-1].split("_")[0] if x.endswith(".deb") else x)
             if "himmelblau-apparmor" in noms and self.apparmor_echoue:
                 return Resultat(100, "", "E: himmelblau-apparmor introuvable")
-            self.paquets.update(noms)
+            if "himmelblau-apparmor" in noms and self.apparmor_a_moitie:
+                self.etats["himmelblau-apparmor"] = "iF"
+                return Resultat(100, "", "E: Sub-process /usr/bin/dpkg returned an error code (1)")
+            garder = "Dpkg::Options::=--force-confold" in options
+            for nom in noms:
+                if not self._poser(nom, garder):
+                    return Resultat(100, "", "end of file on stdin at conffile prompt")
+        return Resultat(0)
+
+    def _dpkg(self, a, entree):
+        if "--configure" in a:
+            for nom in [n for n, e in self.etats.items() if e[1] != "i"]:
+                if not self._poser(nom, "--force-confold" in a):
+                    return Resultat(1, "", "end of file on stdin at conffile prompt")
+        elif a[0] == "--remove":
+            self.paquets.discard(a[-1])
+            self.etats.pop(a[-1], None)
         return Resultat(0)
 
     def _dpkg_deb(self, a, entree):
-        """dpkg-deb -f FICHIER Package : le fichier simulé contient le nom du paquet."""
-        if a[0] == "-f" and self.existe(a[1]):
-            return Resultat(0, self.lire(a[1]).strip() + "\n")
-        return Resultat(1, "", "dpkg-deb : fichier illisible")
+        """dpkg-deb -f FICHIER Package : le fichier simulé contient le nom du paquet ; -I FICHIER conffiles et
+        -x FICHIER DOSSIER utilisent `conffiles`."""
+        if not self.existe(a[1]):
+            return Resultat(1, "", "dpkg-deb : fichier illisible")
+        nom = self.lire(a[1]).strip()
+        if a[0] == "-f":
+            return Resultat(0, nom + "\n")
+        if a[0] == "-I" and a[2:] == ["conffiles"]:
+            if not self.conffiles.get(nom):
+                return Resultat(2, "", "ne contient pas de composant de contrôle « conffiles »")
+            return Resultat(0, "".join(c + "\n" for c in self.conffiles[nom]))
+        if a[0] == "-x":
+            for chemin, texte in self.conffiles.get(nom, {}).items():
+                self.ecrire(a[2] + chemin, texte)
+            return Resultat(0)
+        return Resultat(2, "", "option inconnue")
 
     def _hostnamectl(self, a, entree):
         if a[0] == "hostname":
@@ -126,6 +183,8 @@ class Machine(Systeme):
         if a[0] == "is-enabled":
             return Resultat(0, "enabled\n") if a[1] in self.actives else Resultat(1, "disabled\n")
         noms = [x for x in a[1:] if not x.startswith("-")]
+        if a[0] == "list-unit-files":
+            return Resultat(0, "".join(f"{n} disabled enabled\n" for n in noms if n not in self.unites_absentes))
         if a[0] == "enable":
             self.actives.update(noms)
             if "--now" in a:
@@ -256,6 +315,7 @@ class Base(unittest.TestCase):
         if lier:
             self.ecrire(himmelblau.CONFIG, himmelblau.texte_config("", himmelblau.domaine(compte), himmelblau.USER_MAP))
             self.ecrire(himmelblau.USER_MAP, f"{A}:{compte}\n")
+            m.creer_lien(A, f"/home/{compte}")
             m.actifs.update(himmelblau.SERVICES)
             m.actives.update(himmelblau.SERVICES)
 
