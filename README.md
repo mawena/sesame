@@ -124,6 +124,12 @@ Déconnectez-vous, choisissez votre compte à l'écran d'accueil, tapez le **mot
 connexion ; Himmelblau vous fait ensuite choisir un **code PIN** (Windows Hello) pour les connexions et les
 déverrouillages suivants. Le mot de passe local de votre compte reste valable.
 
+Que vous choisissiez la tuile de votre compte ou que vous tapiez votre adresse pro, vous arrivez dans **le même dossier
+personnel** : `/home/<adresse>` est un lien vers le dossier de votre compte local.
+
+Le **trousseau GNOME** (« Connexion ») reste chiffré avec l'ancien mot de passe local : changez-le dans « Mots de passe
+et clés » pour y mettre le mot de passe Entra, sinon les applications le redemandent.
+
 ## Les étapes
 
 `sesame rejoindre` les enchaîne, en sautant celles qui sont déjà faites ; on peut aussi les lancer une par une.
@@ -133,20 +139,20 @@ déverrouillages suivants. Le mot de passe local de votre compte reste valable.
 | Sauvegarder | `sesame sauvegarde` | copie la configuration des comptes et de la connexion avant toute modification |
 | Compte de secours | `sesame secours [--copier]` | crée un compte administrateur local de dépannage ; mot de passe demandé deux fois, ou `--copier` pour reprendre le mot de passe Ubuntu actuel |
 | Nommer la machine | `sesame nom-machine NOM` | 1 à 15 caractères (lettres, chiffres, tirets), `hostnamectl` et `/etc/hosts` |
-| Quitter l'AD | `sesame quitter-ad` | quitte un éventuel domaine Active Directory (sans objet sinon) |
+| Quitter l'AD | `sesame quitter-ad` | quitte un éventuel domaine Active Directory (sans objet sinon), arrête SSSD et ses sockets |
 | Outils | `sesame outils` | installe `podman`, `uidmap`, `git`, `make` ; vérifie les plages `subuid`/`subgid` du compte |
 | Compiler | `sesame compiler` | clone `stable-4.x` dans `~/.local/share/sesame/himmelblau` et compile les `.deb` dans un conteneur podman, sous votre compte (environ 30 à 60 min, ~6 Go de RAM, ~10 Go de disque) |
-| Installer | `sesame installer` | installe les `.deb` compilés : `himmelblau`, `pam-himmelblau`, `nss-himmelblau` (et `himmelblau-apparmor` si AppArmor est présent) |
-| Configurer | `sesame configurer [--compte ADRESSE] [--compte-local NOM]` | écrit `himmelblau.conf` et `user-map`, active les services |
+| Installer | `sesame installer` | installe les `.deb` compilés : `himmelblau`, `pam-himmelblau`, `nss-himmelblau` (et `himmelblau-apparmor` si AppArmor est présent), sans aucune question de dpkg ; répare un paquet Himmelblau resté à moitié installé |
+| Configurer | `sesame configurer [--compte ADRESSE] [--compte-local NOM]` | écrit `himmelblau.conf` et `user-map`, fait de `/home/<adresse>` un lien vers votre dossier, active les services |
 | Première connexion | `sesame premiere-connexion` | explique la marche à suivre et la note |
-| Vérifier | `sesame verifier` | contrôles sans root : service, NSS, PAM, `user-map`, nom d'hôte |
+| Vérifier | `sesame verifier` | contrôles sans root : service, NSS, PAM, `user-map`, dossier de l'adresse, nom d'hôte |
 
 Les paquets configurent eux-mêmes PAM, NSS et GDM ; Sésame le **vérifie** après coup et signale ce qui manque.
 
 ## Désactiver
 
-`sesame desactiver` (ou le menu de l'assistant) retire votre compte de `user-map`, désactive le profil PAM de
-Himmelblau et arrête ses services. Rien n'est désinstallé : vous vous connectez à nouveau en local seulement.
+`sesame desactiver` (ou le menu de l'assistant) retire votre compte de `user-map` et le lien `/home/<adresse>`,
+désactive le profil PAM de Himmelblau et arrête ses services. Rien n'est désinstallé : vous vous connectez à nouveau en local seulement.
 `sesame rejoindre` rétablit tout.
 
 ## Ce que Sésame modifie
@@ -156,7 +162,10 @@ Himmelblau et arrête ses services. Rien n'est désinstallé : vous vous connect
 | `/etc/sesame/sesame.conf` | réglages de Sésame (compte, compte local, compte de secours, nom de la machine) |
 | `/etc/hostname`, `/etc/hosts` | nom de la machine (`hostnamectl`, ligne `127.0.1.1`) |
 | `~/.local/share/sesame/himmelblau` | clone de Himmelblau et paquets compilés (`packaging/`), sous votre compte |
-| `/etc/himmelblau/himmelblau.conf` | section `[global]` : `domain` (domaine de l'adresse) et `user_map_file` ; le reste du fichier est gardé, copie `.sesame-origine` |
+| `/etc/himmelblau/himmelblau.conf` | section `[global]` : `domain` (domaine de l'adresse), `user_map_file`, `home_attr = SPN` et `home_alias = UUID` ; le reste du fichier est gardé, copie `.sesame-origine` |
+| `/home/<adresse>` | lien vers le dossier du compte local ; un dossier déjà créé par Himmelblau (`/home/<adresse>` ou `/home/<UUID>`) est renommé `<dossier>.avant-sesame-<date>`, jamais supprimé |
+| `/etc/apparmor.d/local/*` | un fichier vide (créé vide par un autre paquet, comme `usr.sbin.cupsd` par cups) prend la version de `himmelblau-apparmor` ; un fichier modifié est gardé, la version du paquet est posée en `.dpkg-dist` |
+| services `sssd` et `sssd-*.socket` | désactivés en quittant l'AD |
 | `/etc/himmelblau/user-map` | une ligne `compte-local:adresse` |
 | services `himmelblaud`, `himmelblaud-tasks` | activés et démarrés |
 | compte de secours | créé avec le mot de passe choisi (ou l'empreinte du mot de passe actuel avec `--copier`), dans `sudo` |

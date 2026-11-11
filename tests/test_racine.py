@@ -143,7 +143,8 @@ class TestSousCommandes(BaseRacine):
         code, evts = self.evenements("outils")
         self.assertEqual(code, 0, evts)
         textes = [e["texte"] for e in evts if e["type"] == "commande"]
-        self.assertIn("apt-get install -y podman uidmap git make", textes)
+        self.assertTrue(any(t.startswith("apt-get install -y -o Dpkg::Options::=--force-confdef")
+                            and t.endswith("podman uidmap git make") for t in textes), textes)
         self.assertTrue(any(t.startswith("usermod --add-subuids") for t in textes))
 
     def test_installer(self):

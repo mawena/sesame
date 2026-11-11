@@ -1,4 +1,5 @@
-"""Himmelblau : constantes et fonctions pures (paquets compilés, himmelblau.conf, user-map)."""
+"""Himmelblau : constantes et fonctions (paquets compilés, himmelblau.conf, user-map, dossier de l'adresse)."""
+import os
 import re
 
 CONFIG = "/etc/himmelblau/himmelblau.conf"
@@ -7,6 +8,12 @@ PAQUETS = ["himmelblau", "pam-himmelblau", "nss-himmelblau"]
 PAQUETS_OPTIONNELS = ("himmelblau-apparmor",)
 OUTILS = ("podman", "uidmap", "git", "make")
 SERVICES = ["himmelblaud", "himmelblaud-tasks"]
+PREFIXE_DOSSIERS = "/home/"
+# Le dossier que Himmelblau donne à une adresse est home_prefix + l'adresse (home_attr = SPN), et l'alias
+# home_prefix + UUID devient un lien vers lui. Sésame fait de home_prefix + l'adresse un lien vers le dossier du compte
+# local : se connecter avec l'adresse ou avec le compte mène au même dossier. Sans ces réglages, Himmelblau crée un
+# dossier vide /home/<UUID> à la première connexion par l'adresse (home_alias ne peut pas être désactivé).
+REGLAGES_DOSSIER = {"home_attr": "SPN", "home_alias": "UUID"}
 
 
 def debs_dans(noms):
@@ -57,7 +64,7 @@ def _regler(lignes, section, valeurs):
 def texte_config(existant, domaine, user_map):
     """himmelblau.conf : `domain` et `user_map_file` fixés dans [global], le reste du fichier est gardé."""
     lignes = (existant or "").rstrip("\n").split("\n") if (existant or "").strip() else []
-    lignes = _regler(lignes, "global", {"domain": domaine, "user_map_file": user_map})
+    lignes = _regler(lignes, "global", dict({"domain": domaine, "user_map_file": user_map}, **REGLAGES_DOSSIER))
     return "\n".join(lignes) + "\n"
 
 
@@ -73,6 +80,35 @@ def lire_config(texte, cle, section="global"):
             if v:
                 return v.group(1)
     return ""
+
+
+def dossier_bien_range(texte):
+    """Vrai si himmelblau.conf range le dossier sous l'adresse (REGLAGES_DOSSIER)."""
+    return all(lire_config(texte, cle).lower() == valeur.lower() for cle, valeur in REGLAGES_DOSSIER.items())
+
+
+def dossier_adresse(texte, adresse):
+    """Dossier que Himmelblau donne à `adresse` d'après himmelblau.conf (`texte`)."""
+    return (lire_config(texte, "home_prefix") or PREFIXE_DOSSIERS) + adresse
+
+
+def cible_du_lien(lien, cible):
+    """Chemin visé par le lien `lien` dont la cible écrite est `cible` (un seul niveau)."""
+    return os.path.normpath(os.path.join(os.path.dirname(lien), cible))
+
+
+def cible_a_ecrire(lien, dossier):
+    """Cible à écrire dans `lien` pour viser `dossier` : son nom s'ils sont côte à côte, sinon son chemin complet."""
+    dossier = os.path.normpath(dossier)
+    return os.path.basename(dossier) if os.path.dirname(dossier) == os.path.dirname(os.path.normpath(lien)) else dossier
+
+
+def dossier_relie(systeme, adresse, dossier_local):
+    """Vrai si le dossier de `adresse` est un lien vers `dossier_local` (un vrai dossier)."""
+    lien = dossier_adresse(systeme.lire(CONFIG), adresse)
+    cible = systeme.lire_lien(lien)
+    return (cible is not None and cible_du_lien(lien, cible) == os.path.normpath(dossier_local)
+            and systeme.est_dossier(dossier_local))
 
 
 def _champ_local(ligne):

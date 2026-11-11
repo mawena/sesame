@@ -41,7 +41,8 @@ class TestDomaine(unittest.TestCase):
 
 class TestConfig(unittest.TestCase):
     def test_fichier_vide(self):
-        self.assertEqual(h.texte_config("", "a.com", "/m"), "[global]\ndomain = a.com\nuser_map_file = /m\n")
+        self.assertEqual(h.texte_config("", "a.com", "/m"),
+                         "[global]\ndomain = a.com\nuser_map_file = /m\nhome_attr = SPN\nhome_alias = UUID\n")
 
     def test_garde_le_reste_et_remplace(self):
         avant = "# note\n[global]\nlog_level = debug\ndomain = vieux.com\n# domain = commente\n\n[autre]\ndomain = x\n"
@@ -61,7 +62,7 @@ class TestConfig(unittest.TestCase):
 
     def test_section_absente_ajoutee(self):
         t = h.texte_config("[autre]\nx = 1\n", "a.com", "/m")
-        self.assertEqual(t, "[autre]\nx = 1\n\n[global]\ndomain = a.com\nuser_map_file = /m\n")
+        self.assertEqual(t, "[autre]\nx = 1\n\n[global]\ndomain = a.com\nuser_map_file = /m\nhome_attr = SPN\nhome_alias = UUID\n")
 
     def test_idempotent_et_lecture(self):
         une = h.texte_config("[global]\nlog_level = x\n", "a.com", "/m")
@@ -69,6 +70,27 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(h.lire_config(une, "domain"), "a.com")
         self.assertEqual(h.lire_config(une, "absent"), "")
         self.assertEqual(h.lire_config(une, "domain", "autre"), "")
+
+
+class TestDossier(unittest.TestCase):
+    def test_reglages_du_dossier_ecrits_et_remplaces(self):
+        t = h.texte_config("[global]\nhome_attr = UUID\nhome_alias = spn\nhome_prefix = /home/\n", "a.com", "/m")
+        self.assertEqual(h.lire_config(t, "home_attr"), "SPN")
+        self.assertEqual(h.lire_config(t, "home_alias"), "UUID")
+        self.assertEqual(t.count("home_attr"), 1)
+        self.assertTrue(h.dossier_bien_range(t))
+        self.assertFalse(h.dossier_bien_range("[global]\ndomain = a.com\n"))
+        self.assertTrue(h.dossier_bien_range("[global]\nhome_attr = spn\nhome_alias = uuid\n"))
+
+    def test_dossier_de_l_adresse(self):
+        self.assertEqual(h.dossier_adresse("", "a@b.com"), "/home/a@b.com")
+        self.assertEqual(h.dossier_adresse("[global]\nhome_prefix = /srv/home/\n", "a@b.com"), "/srv/home/a@b.com")
+
+    def test_cibles(self):
+        self.assertEqual(h.cible_du_lien("/home/a@b.com", "a"), "/home/a")
+        self.assertEqual(h.cible_du_lien("/home/a@b.com", "/srv/a"), "/srv/a")
+        self.assertEqual(h.cible_a_ecrire("/home/a@b.com", "/home/a/"), "a")
+        self.assertEqual(h.cible_a_ecrire("/home/a@b.com", "/srv/a"), "/srv/a")
 
 
 class TestUserMap(unittest.TestCase):

@@ -54,6 +54,11 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="2.0.2" date="2026-11-11">
+      <description>
+        <p>Correctif : installation sans question de dpkg (himmelblau-apparmor), sockets de SSSD arrêtés en quittant l'AD, un seul dossier personnel quelle que soit la façon de se connecter, et rappel du trousseau GNOME.</p>
+      </description>
+    </release>
     <release version="2.0.1" date="2026-11-11">
       <description>
         <p>Correctif : la compilation de Himmelblau lancée par la file Gagarine fonctionne, et « Rejoindre » reprend les paquets déjà compilés.</p>

@@ -80,6 +80,18 @@ Ligne de commande : `sesame rejoindre [--compte ADRESSE] [--nom-machine NOM]`, `
   `sesame-reprise.service` disparaît du paquet (jamais activée par défaut) ; si `/var/lib/sesame/reprise-programmee`
   existe, il est retiré par `postinst`.
 
+**Dossier personnel (2.0.2).** Sans réglage, Himmelblau donne à l'adresse le dossier `/home/<UUID>` (`home_attr`
+par défaut) avec l'alias `/home/<adresse>` : une connexion en tapant l'adresse ouvrait un dossier neuf, créé depuis
+`/etc/skel`. Sésame écrit `home_attr = SPN` et `home_alias = UUID` (l'alias ne peut pas être désactivé) et fait de
+`/home/<adresse>` un lien relatif vers le dossier du compte local ; `himmelblaud-tasks` ne crée alors que l'alias
+`/home/<UUID>` → `<adresse>`. Un dossier déjà créé par Himmelblau (`/home/<adresse>`, ou `/home/<UUID>` du même
+propriétaire) est renommé `<dossier>.avant-sesame-<date>`, jamais supprimé. « Désactiver » retire le lien.
+
+**Installation sans question (2.0.2).** `apt-get install` reçoit `--force-confdef --force-confold`. Avant l'installation,
+chaque fichier de configuration d'un `.deb` présent sur le poste mais vide (ou fait de commentaires) reçoit la version du
+paquet, pour que dpkg le trouve identique ; un paquet Himmelblau resté à moitié installé est réparé par
+`dpkg --configure -a`.
+
 ## Contrats
 
 ### Étapes (`sesame/etapes.py`, détection sans root, même structure JSON que la 1.x)
@@ -100,7 +112,7 @@ Ligne de commande : `sesame rejoindre [--compte ADRESSE] [--nom-machine NOM]`, `
 | `outils` | Installer les outils de compilation | `podman`, `uidmap`, `git`, `make` installés |
 | `compiler` | Compiler Himmelblau | `packaging/sesame-compilation.json` existe dans `dossier_compilation` avec les trois paquets (ou Himmelblau déjà installé : `fait`) |
 | `installer` | Installer Himmelblau | paquets `himmelblau`, `pam-himmelblau`, `nss-himmelblau` installés |
-| `configurer` | Relier votre compte à Entra | `himmelblau.conf` a `domain` et `user_map_file`, `user-map` relie le compte local, `himmelblaud` actif |
+| `configurer` | Relier votre compte à Entra | `himmelblau.conf` a `domain`, `user_map_file`, `home_attr = SPN` et `home_alias = UUID`, `user-map` relie le compte local, `/home/<adresse>` est un lien vers son dossier (2.0.2), `himmelblaud` actif |
 | `premiere_connexion` | Première connexion | notée dans `etat.json` (`noter-premiere-connexion`), sinon `a_faire` avec la marche à suivre |
 
 ### `sesame-racine` (root, par pkexec ; `--json` = un événement par ligne, comme en 1.x)

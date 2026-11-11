@@ -1,12 +1,29 @@
 """Actions root de Sésame : chacune renvoie un message, ou lève ErreurSesame."""
+import os
 import re
 import tarfile
 
 from . import chemins, config as cfg, etapes, etat, himmelblau, nsswitch, sauvegarde
 from .systeme import ErreurSesame, ErreurSysteme
 
+# Options de dpkg pour qu'aucune question ne bloque une installation (Sésame tourne sans terminal ; DEBIAN_FRONTEND
+# et l'entrée vide viennent de Systeme.lancer) : un fichier de configuration modifié sur le poste est gardé, la version
+# du paquet est posée à côté, en .dpkg-dist.
+FORCE_DPKG = ["--force-confdef", "--force-confold"]
+OPTIONS_APT = [x for option in FORCE_DPKG for x in ("-o", "Dpkg::Options::=" + option)]
+UNITES_SSSD = ["sssd.service"] + [f"sssd-{n}.socket" for n in ("nss", "pam", "pam-priv", "autofs", "pac", "ssh", "sudo")]
+EXTRACTION = chemins.VAR_SESAME + "/extraction"
+UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+TROUSSEAU = ("Le trousseau GNOME (« Connexion ») reste chiffré avec l'ancien mot de passe local : changez-le dans "
+             "« Mots de passe et clés » pour y mettre le mot de passe Entra, sinon les applications le redemandent.")
+
 MESSAGE_NOM_MACHINE = ("Nom de machine invalide : {!r} (1 à 15 lettres, chiffres ou tirets, sans tiret au début "
                        "ni à la fin, pas uniquement des chiffres).")
+
+
+def _apt_installer(paquets):
+    """argv d'un « apt-get install » qui ne pose aucune question."""
+    return ["apt-get", "install", "-y"] + OPTIONS_APT + list(paquets)
 
 
 def _config_ou_defauts(systeme):
@@ -133,6 +150,13 @@ def _archiver_dossier_ad(systeme, upn):
     systeme.etape(f"Ancien dossier AD archivé : {archive}")
 
 
+def _unites_presentes(systeme, unites):
+    """Unités de `unites` installées sur le poste (« systemctl disable » refuse tout si une seule manque)."""
+    r = systeme.lancer(["systemctl", "list-unit-files", "--no-legend", "--plain"] + list(unites))
+    presentes = {ligne.split()[0] for ligne in r.sortie.splitlines() if ligne.split()}
+    return [u for u in unites if u in presentes]
+
+
 def quitter_ad(systeme):
     c = _config_ou_defauts(systeme)
     domaines = systeme.domaines()
@@ -140,7 +164,11 @@ def quitter_ad(systeme):
         systeme.etape(f"Départ du domaine {domaine}")
         systeme.executer(["realm", "leave", "-v", domaine])
     systeme.etape("Arrêt de SSSD")
-    systeme.executer(["systemctl", "disable", "--now", "sssd"], tolerant=True)
+    unites = _unites_presentes(systeme, UNITES_SSSD)
+    if unites:
+        # Les sockets aussi : laissés actifs, ils réveilleraient SSSD et échoueraient à chaque démarrage.
+        systeme.executer(["systemctl", "disable", "--now"] + unites, tolerant=True)
+        systeme.executer(["systemctl", "reset-failed"] + unites, tolerant=True)
     for rep, motif in (("/var/lib/sss/db", ".ldb"), ("/var/lib/sss/mc", "")):
         for nom in systeme.lister(rep):
             if nom.endswith(motif):
@@ -167,7 +195,7 @@ def installer_outils(systeme, compte_local=None):
     local = _compte_local(systeme, compte_local)
     systeme.etape("Installation des outils de compilation")
     try:
-        systeme.executer(["apt-get", "install", "-y"] + list(himmelblau.OUTILS))
+        systeme.executer(_apt_installer(himmelblau.OUTILS))
     except ErreurSysteme as e:
         raise ErreurSesame(f"L'installation des outils de compilation a échoué ({e}). Vérifiez la connexion Internet "
                            "du poste ; relancer « Rejoindre » reprend là où on s'était arrêté.") from None
@@ -198,6 +226,81 @@ def _paquets_complets(systeme, paquets):
         return False
 
 
+def _etat_dpkg(systeme, paquet):
+    """État d'un paquet selon dpkg (« ii » installé, « iU » dépaqueté, « iF » à moitié configuré…), vide s'il est
+    inconnu."""
+    r = systeme.lancer(["dpkg-query", "-W", "-f=${db:Status-Abbrev}", paquet])
+    return r.sortie.strip()[:2] if r.ok else ""
+
+
+def _a_moitie_installe(etat_dpkg):
+    return len(etat_dpkg) == 2 and etat_dpkg[1] in "HUFWt"
+
+
+def _vierge(texte):
+    """Vrai si le texte n'a que des blancs et des commentaires (« #include » d'AppArmor n'en est pas un)."""
+    for ligne in texte.splitlines():
+        ligne = ligne.strip()
+        if ligne and (not ligne.startswith("#") or ligne.startswith("#include")):
+            return False
+    return True
+
+
+def _conffiles(systeme, deb):
+    """Fichiers de configuration (conffiles) déclarés par un .deb."""
+    r = systeme.lancer(["dpkg-deb", "-I", deb, "conffiles"])
+    if not r.ok:
+        return []
+    return [mots[-1] for mots in (ligne.split() for ligne in r.sortie.splitlines()) if mots and mots[-1].startswith("/")]
+
+
+def _aligner_conffiles(systeme, paquet, deb):
+    """Prépare les fichiers de configuration d'un paquet pour que dpkg ne pose aucune question. Un fichier du poste
+    vide ou fait de commentaires (créé vide par un autre paquet, comme /etc/apparmor.d/local/usr.sbin.cupsd par cups)
+    prend la version du paquet : dpkg le trouve identique. Un fichier modifié est gardé, la version du paquet ira en
+    .dpkg-dist."""
+    presents = [p for p in _conffiles(systeme, deb) if systeme.chemin(p).is_file() and not systeme.chemin(p).is_symlink()]
+    if not presents:
+        return
+    systeme.supprimer(EXTRACTION)
+    systeme.creer_dossier(EXTRACTION, 0o700)
+    try:
+        if not systeme.lancer(["dpkg-deb", "-x", deb, EXTRACTION]).ok:
+            systeme.avertir(f"Impossible de lire les fichiers de configuration de {deb}.")
+            return
+        for p in presents:
+            neuf = systeme.chemin(EXTRACTION + p)
+            if not neuf.is_file() or neuf.read_bytes() == systeme.chemin(p).read_bytes():
+                continue
+            if _vierge(systeme.lire(p)):
+                systeme.etape(f"{p} était vide : il prend la version de {paquet}")
+                systeme.copier(EXTRACTION + p, p)
+            else:
+                systeme.avertir(f"{p} a été modifié sur ce poste : il est gardé, la version de {paquet} est posée à "
+                                f"côté ({p}.dpkg-dist).")
+    finally:
+        systeme.supprimer(EXTRACTION)
+
+
+def _preparer(systeme, debs):
+    """Aligne les fichiers de configuration des paquets de `debs` ({paquet: .deb}) qui ne sont pas encore installés."""
+    for paquet, deb in debs.items():
+        if _etat_dpkg(systeme, paquet)[1:2] != "i":
+            _aligner_conffiles(systeme, paquet, deb)
+
+
+def _reparer(systeme, debs):
+    """Termine la configuration des paquets Himmelblau restés à moitié installés (une question de dpkg sans réponse,
+    avec Sésame 2.0.1 par exemple) ; sinon apt échouerait à chaque fois."""
+    casses = {p: d for p, d in debs.items() if _a_moitie_installe(_etat_dpkg(systeme, p))}
+    if not casses:
+        return
+    systeme.etape("Réparation de " + ", ".join(casses))
+    for paquet, deb in casses.items():
+        _aligner_conffiles(systeme, paquet, deb)
+    systeme.executer(["dpkg"] + FORCE_DPKG + ["--configure", "-a"], tolerant=True)
+
+
 def installer(systeme, paquets):
     """Installe les .deb compilés du dossier `paquets` (obligatoires, puis optionnels s'ils existent)."""
     version = etapes.version_ubuntu(systeme)
@@ -212,16 +315,30 @@ def installer(systeme, paquets):
         r = systeme.lancer(["dpkg-deb", "-f", chemin, "Package"])
         if not r.ok or r.sortie.strip() != paquet:
             raise ErreurSesame(f"Le fichier {chemin} n'est pas le paquet {paquet} : recompilez Himmelblau.")
+    _reparer(systeme, debs)
     systeme.etape("Installation de Himmelblau")
+    obligatoires = {p: debs[p] for p in himmelblau.PAQUETS}
+    _preparer(systeme, obligatoires)
     try:
-        systeme.executer(["apt-get", "install", "-y"] + [debs[p] for p in himmelblau.PAQUETS])
+        systeme.executer(_apt_installer(obligatoires.values()))
     except ErreurSysteme as e:
         raise ErreurSesame(f"L'installation de Himmelblau a échoué ({e}). Relancer « Rejoindre » reprend là où on "
                            "s'était arrêté.") from None
-    optionnels = [debs[p] for p in himmelblau.PAQUETS_OPTIONNELS if p in debs]
+    optionnels = {p: debs[p] for p in himmelblau.PAQUETS_OPTIONNELS if p in debs}
     if optionnels and systeme.existe(chemins.APPARMOR):
-        if not systeme.executer(["apt-get", "install", "-y"] + optionnels, tolerant=True).ok:
-            systeme.avertir("himmelblau-apparmor n'a pas pu être installé : AppArmor pourrait gêner Himmelblau.")
+        _preparer(systeme, optionnels)
+        systeme.executer(_apt_installer(optionnels.values()), tolerant=True)
+        for paquet in optionnels:
+            etat_dpkg = _etat_dpkg(systeme, paquet)
+            if etat_dpkg[1:2] == "i":
+                continue
+            if _a_moitie_installe(etat_dpkg):
+                # À moitié installé, il bloquerait toutes les commandes apt suivantes.
+                systeme.executer(["dpkg", "--remove", paquet], tolerant=True)
+                systeme.avertir(f"{paquet} n'a pas pu être configuré : il a été retiré pour ne pas bloquer apt. "
+                                "AppArmor pourrait gêner Himmelblau.")
+            else:
+                systeme.avertir(f"{paquet} n'a pas pu être installé : AppArmor pourrait gêner Himmelblau.")
     r = systeme.lancer(["dpkg-query", "-W", "-f=${Version}", "himmelblau"])
     numero = r.sortie.strip() if r.ok else "?"
     _noter(systeme, "installer", himmelblau=numero)
@@ -249,6 +366,51 @@ def _controler_integration(systeme):
                         "essayez « sudo pam-auth-update » et cochez Himmelblau.")
 
 
+def _ecarter(systeme, dossier):
+    """Renomme `dossier` à côté de lui (jamais supprimé) ; renvoie le nouveau nom."""
+    nouveau = f"{dossier}.avant-sesame-{systeme.horodatage()}"
+    systeme.deplacer(dossier, nouveau)
+    systeme.avertir(f"{dossier} (dossier créé par Himmelblau à une connexion par l'adresse) est renommé {nouveau} : "
+                    "rien n'est supprimé, ses fichiers y restent.")
+    return nouveau
+
+
+def _relier_dossier(systeme, compte, u):
+    """Fait du dossier que Himmelblau donne à l'adresse (/home/<adresse>) un lien vers le dossier du compte local `u`.
+    Un dossier déjà créé par Himmelblau (/home/<adresse> ou /home/<UUID> de ce compte) est renommé à côté ; Himmelblau
+    refait ensuite l'alias /home/<UUID> vers /home/<adresse>."""
+    dossier = os.path.normpath(u.dossier)
+    texte = systeme.lire(himmelblau.CONFIG)
+    lien = os.path.normpath(himmelblau.dossier_adresse(texte, compte))
+    if lien == dossier or himmelblau.dossier_relie(systeme, compte, dossier):
+        return
+    systeme.etape(f"Dossier de {compte} : lien vers {dossier}")
+    a_ecarter = []
+    cible = systeme.lire_lien(lien)
+    if cible is not None:
+        vise = himmelblau.cible_du_lien(lien, cible)
+        if vise != dossier and systeme.est_dossier(vise):
+            a_ecarter.append(vise)
+        systeme.supprimer(lien)
+    elif systeme.existe(lien):
+        a_ecarter.append(lien)
+    prefixe = os.path.dirname(lien)
+    for nom in systeme.lister(prefixe):
+        chemin = f"{prefixe}/{nom}"
+        if (UUID.fullmatch(nom) and chemin not in a_ecarter and chemin != dossier and systeme.est_dossier(chemin)
+                and systeme.proprietaire(chemin) == u.uid):
+            a_ecarter.append(chemin)
+    for chemin in a_ecarter:
+        _ecarter(systeme, chemin)
+    systeme.creer_lien(himmelblau.cible_a_ecrire(lien, dossier), lien, u.uid, u.gid)
+
+
+def _delier_dossier(systeme, compte, dossier):
+    """Retire le lien /home/<adresse> s'il mène au dossier du compte local."""
+    if compte and dossier and himmelblau.dossier_relie(systeme, compte, dossier):
+        systeme.supprimer(himmelblau.dossier_adresse(systeme.lire(himmelblau.CONFIG), compte))
+
+
 def configurer(systeme, compte, compte_local=None):
     compte = cfg.normaliser_upn(compte)
     if not cfg.valider_upn(compte):
@@ -266,12 +428,13 @@ def configurer(systeme, compte, compte_local=None):
                                                               himmelblau.USER_MAP), 0o644)
     systeme.ecrire(himmelblau.USER_MAP, himmelblau.texte_user_map(systeme.lire(himmelblau.USER_MAP), local, compte),
                    0o644)
+    u = systeme.comptes_locaux()[local]
+    _relier_dossier(systeme, compte, u)
     systeme.etape("Démarrage des services")
     systeme.executer(["systemctl", "enable", "--now"] + himmelblau.SERVICES)
     systeme.executer(["systemctl", "restart"] + himmelblau.SERVICES)
     _retablir_integration(systeme)
     _controler_integration(systeme)
-    u = systeme.comptes_locaux()[local]
     _enregistrer(systeme, compte=compte, compte_local=local, uid=u.uid, gid=u.gid, dossier=u.dossier)
     _noter(systeme, "configurer", compte=compte, compte_local=local)
     return (f"Le compte {local} est relié à {compte} : il garde son dossier et ses réglages, et se connecte avec "
@@ -344,7 +507,7 @@ def rejoindre(systeme, compte, nom_machine, compte_local=None, paquets=None):
     return (f"Le poste {nom_machine} est prêt. Déconnectez-vous, choisissez votre compte à l'écran d'accueil, "
             f"tapez le mot de passe Entra de {compte} et validez sur le téléphone. Le poste sera inscrit dans Entra "
             "à cette première connexion, puis vous choisirez un code PIN (Windows Hello) pour les connexions "
-            "suivantes.")
+            "suivantes. " + TROUSSEAU)
 
 
 def _enregistre(systeme, champ):
@@ -368,6 +531,8 @@ def desactiver(systeme):
     systeme.etape("Retrait du compte de user-map")
     if systeme.existe(himmelblau.USER_MAP):
         systeme.ecrire(himmelblau.USER_MAP, himmelblau.retirer_user_map(systeme.lire(himmelblau.USER_MAP), local), 0o644)
+    u = systeme.comptes_locaux().get(local)
+    _delier_dossier(systeme, c.compte, u.dossier if u else c.dossier)
     systeme.etape("Retrait de Himmelblau de PAM")
     if not systeme.executer(["pam-auth-update", "--disable", _profil_pam(systeme)], tolerant=True).ok:
         systeme.avertir("pam-auth-update n'a pas pu retirer Himmelblau de PAM : à vérifier.")
