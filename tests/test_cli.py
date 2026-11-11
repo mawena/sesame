@@ -56,7 +56,10 @@ class FauxeCompilation:
     """Doublure de sesame.compilation."""
 
     def __init__(self, file=None, a_jour=False):
-        self.file, self._a_jour, self.appels = file, a_jour, []
+        self.file, self._a_jour, self.appels, self.compile = file, a_jour, [], False
+
+    def etat(self, dossier):
+        return {"compile": self.compile, "commit": None, "date": None, "paquets": {}}
 
     def dossier_par_defaut(self):
         return "/home/u/.local/share/sesame/himmelblau"
@@ -223,6 +226,13 @@ class TestRejoindre(BaseCli):
                                   self.racine("--json", *self.base(), "--paquets", PAQUETS)])
         self.assertIn("== Sauvegarde", sortie)
         self.assertNotIn("pkexec", appels[1])  # la compilation n'est jamais root
+
+    def test_deja_compile_reprend_les_paquets_sans_recompiler(self):
+        self.compilation.compile = True
+        self.lanceur.sorties = [FIN]
+        code, _, _ = self.main("rejoindre", "--compte", ADRESSE, "--nom-machine", "PC-Charles")
+        self.assertEqual(code, 0)
+        self.assertEqual([a[0] for a in self.lanceur.appels], [self.racine("--json", *self.base(), "--paquets", PAQUETS)])
 
     def test_compilation_par_la_file_gagarine(self):
         self.compilation.file = ["gagarine", "file", "himmelblau compilation", "6", "4", "--", "python3"]

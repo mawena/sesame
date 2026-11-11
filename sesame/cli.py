@@ -158,6 +158,14 @@ def dossier_paquets():
     return os.path.join(dossier_compilation(), "packaging")
 
 
+def deja_compile():
+    """Vrai si les paquets de Himmelblau sont déjà compilés dans le dossier de compilation."""
+    try:
+        return bool(compilation.etat(dossier_compilation()).get("compile"))
+    except Exception:  # module absent ou incomplet, fichier illisible : on compilera
+        return False
+
+
 def compiler(lanceur=subprocess.run):
     """Compile Himmelblau sous l'utilisateur (jamais root) : par la file Gagarine si elle est là."""
     dossier = dossier_compilation()
@@ -176,6 +184,8 @@ def rejoindre(systeme, args, saisie=input, lanceur=subprocess.run, utilisateur=u
         print("Nom de machine invalide (1 à 15 caractères : lettres, chiffres, tirets).", file=sys.stderr)
         return 2
     cmd = ["rejoindre", "--compte", compte, "--nom-machine", nom, "--compte-local", local]
+    if deja_compile():  # Himmelblau déjà compilé : on reprend ses paquets sans recompiler
+        return evenements_racine(cmd + ["--paquets", dossier_paquets()], lanceur)[0]
     code, vus = evenements_racine(cmd, lanceur)
     if code != 0 or "compilation_requise" not in vus:
         return code

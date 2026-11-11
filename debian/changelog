@@ -1,3 +1,11 @@
+sesame (2.0.1) unstable; urgency=medium
+
+  * La compilation de Himmelblau lancée par la file Gagarine trouve de
+    nouveau le module sesame.compilation (PYTHONPATH toujours transmis).
+  * « Rejoindre » reprend les paquets déjà compilés au lieu de recompiler.
+
+ -- mawena <57989130+mawena@users.noreply.github.com>  Wed, 11 Nov 2026 18:20:36 +0000
+
 sesame (2.0.0) unstable; urgency=medium
 
   * Passage à Himmelblau : le poste rejoint Microsoft Entra ID comme un PC
