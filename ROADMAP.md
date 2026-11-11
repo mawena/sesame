@@ -40,7 +40,7 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 
 - [x] Tests complets par la file Gagarine
 - [x] Construction du `.deb`, lintian sans erreur ni avertissement
-- [ ] Installation sur le poste (`pkexec`), `sesame etat` et l'assistant sur le vrai système
+- [x] Installation sur le poste (`pkexec`), `sesame etat` et l'assistant sur le vrai système
 
 ## Phase 6 — Release 1.0.0
 
