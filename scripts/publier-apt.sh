@@ -39,7 +39,7 @@ cp "$RACINE/data/apt/sesame.sources" "$APT/sesame.sources"
 
 # Site : page d'accueil, feuille de style, script, installateur, icône et captures de l'interface
 for f in "$RACINE"/site/*; do cp "$f" "$WT/"; done
-cp "$RACINE/data/icons/hicolor/scalable/apps/io.github.mawena.Sésame.svg" "$WT/icone.svg"
+cp "$RACINE/data/icons/hicolor/scalable/apps/io.github.mawena.Sesame.svg" "$WT/icone.svg"
 rm -rf "$WT/captures"; mkdir -p "$WT/captures"
 cp "$RACINE"/docs/captures/*.png "$WT/captures/"
 
