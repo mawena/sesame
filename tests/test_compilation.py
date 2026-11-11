@@ -221,8 +221,11 @@ class TestCommandes(Base):
             cmd = c.commande_directe(self.dossier)
         self.assertEqual(cmd[:2], ["env", f"PYTHONPATH={parent}"])
         self.assertEqual(cmd[2:], [sys.executable, "-m", "sesame.compilation", "--directe", "--dossier", self.dossier])
-        with mock.patch.dict(os.environ, {"PYTHONPATH": parent}):
-            self.assertEqual(c.commande_directe(self.dossier)[0], sys.executable)
+        # Même quand sys.path ou PYTHONPATH le contiennent déjà : le processus lancé ne voit pas le sys.path.
+        with mock.patch.object(sys, "path", [parent]), mock.patch.dict(os.environ, {"PYTHONPATH": parent}):
+            self.assertEqual(c.commande_directe(self.dossier)[:2], ["env", f"PYTHONPATH={parent}"])
+        with mock.patch.dict(os.environ, {"PYTHONPATH": "/x"}):
+            self.assertEqual(c.commande_directe(self.dossier)[1], f"PYTHONPATH={parent}{os.pathsep}/x")
 
 
 class TestMain(Base):

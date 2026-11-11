@@ -92,6 +92,14 @@ def argv_compilation(coeur, dossier):
     return list(argv) + ['--json']
 
 
+def deja_compile(compilation, dossier):
+    """Vrai si Himmelblau est déjà compilé dans `dossier` (on reprend alors ses paquets sans recompiler)."""
+    try:
+        return bool(compilation is not None and compilation.etat(dossier).get('compile'))
+    except Exception:  # module incomplet, fichier illisible : on compilera
+        return False
+
+
 def argv_paquets(dossier):
     return ['--paquets', os.path.join(dossier, 'packaging')]
 

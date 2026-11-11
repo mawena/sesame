@@ -438,6 +438,9 @@ class Fenetre(Adw.ApplicationWindow):
         self.arguments_rejoindre = arguments
         self.rejoindre_en_cours = True
         self.compilation_requise = False
+        dossier = self.dossier_compilation()
+        if donnees.deja_compile(getattr(self.coeur, 'compilation', None), dossier):
+            arguments = arguments + donnees.argv_paquets(dossier)  # déjà compilé : on reprend ses paquets
         self.executer('rejoindre', arguments)
 
     def lancer_etape(self, identifiant):

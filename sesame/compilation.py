@@ -202,15 +202,14 @@ def commande_file(dossier, quoi=shutil.which):
 
 
 def commande_directe(dossier):
-    """argv complet de la compilation directe ; PYTHONPATH est ajouté si le paquet sesame n'est pas importable seul."""
+    """argv complet de la compilation directe.
+
+    PYTHONPATH est toujours donné : le processus lancé (par la file Gagarine notamment) n'hérite pas du sys.path du
+    programme qui le demande, et le paquet installé place `sesame` dans /usr/share/sesame (bogue de la 2.0.0)."""
     parent = str(Path(__file__).resolve().parent.parent)
-    base = [sys.executable, "-m", "sesame.compilation", "--directe", "--dossier", str(dossier)]
-    if parent in (os.environ.get("PYTHONPATH") or "").split(os.pathsep):
-        return base
-    # Dossier courant ou site-packages : sys.path le contient déjà seulement s'il est sur le chemin de Python.
-    if parent in [str(Path(p or ".").resolve()) for p in sys.path]:
-        return base
-    return ["env", f"PYTHONPATH={parent}", *base]
+    autres = [p for p in (os.environ.get("PYTHONPATH") or "").split(os.pathsep) if p and p != parent]
+    return ["env", "PYTHONPATH=" + os.pathsep.join([parent] + autres),
+            sys.executable, "-m", "sesame.compilation", "--directe", "--dossier", str(dossier)]
 
 
 def main(argv=None, lancer_=None, sortie=None, quoi=shutil.which):
