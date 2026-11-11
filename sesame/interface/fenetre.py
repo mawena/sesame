@@ -12,6 +12,7 @@ from . import dialogues, donnees, lanceur
 
 CHAMPS = (('locataire', 'ID du locataire (annuaire)'), ('client', 'ID client (application)'),
           ('compte', 'Compte Entra (UPN)'), ('compte_local', 'Compte local à reprendre'))
+CONNEXIONS = (('mot-de-passe', 'Mot de passe Entra'), ('code', 'Code sur le téléphone'))
 
 
 class Rangee:
@@ -114,6 +115,9 @@ class Fenetre(Adw.ApplicationWindow):
             champ.connect('changed', self._champ_modifie, cle)
             self.champs[cle] = champ
             compte.add(champ)
+        self.connexion = Adw.ComboRow(title='Connexion', subtitle='À l’écran d’accueil ; le mot de passe Entra, c’est comme sur Windows',
+                                      model=Gtk.StringList.new([titre for _, titre in CONNEXIONS]))
+        compte.add(self.connexion)
         guide = Adw.ActionRow(title='Créer l’application dans le portail Entra', activatable=True,
                               subtitle='Pas à pas, avec un lien vers le portail')
         guide.add_prefix(Gtk.Image.new_from_icon_name('help-about-symbolic'))
@@ -195,6 +199,14 @@ class Fenetre(Adw.ApplicationWindow):
         for cle, valeur in (('locataire', c.locataire), ('client', c.client), ('compte', c.compte),
                             ('compte_local', c.compte_local)):
             self.champs[cle].set_text(valeur or '')
+        modes = [mode for mode, _ in CONNEXIONS]
+        mode = getattr(c, 'connexion', modes[0])
+        self.connexion.set_selected(modes.index(mode) if mode in modes else 0)
+
+    def valeur_connexion(self):
+        """Mode de connexion choisi : 'mot-de-passe' ou 'code'."""
+        i = self.connexion.get_selected()
+        return CONNEXIONS[i][0] if 0 <= i < len(CONNEXIONS) else CONNEXIONS[0][0]
 
     def _afficher(self):
         par_id = {e['id']: e for e in self.etats}
@@ -273,7 +285,8 @@ class Fenetre(Adw.ApplicationWindow):
         elif identifiant == 'configurer':
             self._configurer(etape)
         elif identifiant == 'premiere_connexion':
-            dialogues.premiere_connexion(self, self.champs['compte'].get_text().strip())
+            dialogues.premiere_connexion(self, self.champs['compte'].get_text().strip(),
+                                         connexion=self.valeur_connexion())
         elif identifiant == 'reprise':
             self._reprendre(etape)
         elif identifiant == 'verification':
@@ -288,7 +301,7 @@ class Fenetre(Adw.ApplicationWindow):
             return
         groupes = ','.join(self.config.groupes) if self.config and self.config.groupes else ''
         arguments = ['--locataire', valeurs['locataire'], '--client', valeurs['client'], '--compte', valeurs['compte'],
-                     '--compte-local', valeurs['compte_local']]
+                     '--compte-local', valeurs['compte_local'], '--connexion', self.valeur_connexion()]
         if self.config and self.config.secours:
             arguments += ['--secours', self.config.secours]
         if groupes:

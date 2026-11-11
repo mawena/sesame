@@ -1,6 +1,7 @@
 """Détection de chaque statut de chaque étape."""
 from sesame import chemins, etapes, etat, reprise, sauvegarde
 from tests.commun import A, N, NU, U, H, Base
+from sesame.version import VERSION
 
 
 class BaseEtapes(Base):
@@ -55,6 +56,18 @@ class TestStatuts(BaseEtapes):
         self.m.paquets.add("authd")
         self.assertEqual(self.statut("installer"), "fait")
 
+    def test_installer_versions(self):
+        statut, detail = self.detecte("installer")
+        self.assertEqual(statut, "fait")
+        self.assertIn("authd 0.7.1 et le module Entra 0.5.0", detail)
+        self.m.versions["authd-msentraid"] = "0.4.2"
+        statut, detail = self.detecte("installer")
+        self.assertEqual(statut, "fait")  # installé : « Configurer » reste accessible pour passer au mode code
+        self.assertIn("Trop ancien", detail)
+        self.assertIn("0.4.2", detail)
+        self.c.connexion = "code"
+        self.assertNotIn("Trop ancien", self.detecte("installer")[1])
+
     def test_installer_ubuntu_trop_ancien(self):
         self.ecrire("/etc/os-release", 'VERSION_ID="22.04"\n')
         self.assertEqual(self.statut("installer"), "bloquee")
@@ -68,6 +81,19 @@ class TestStatuts(BaseEtapes):
         self.m.actifs.add(chemins.SERVICE_BROKER)
         self.ecrire(chemins.SESAME_CONF, "[entra]\nlocataire = non\n")
         self.assertEqual(self.statut("configurer"), "a_faire")
+
+    def test_configurer_mode_de_connexion_change(self):
+        self.ecrire(chemins.BROKER_AUTHD, "[x]\n")
+        etat.noter(self.m, "configurer", {"date": "x", "connexion": "mot-de-passe"})
+        self.assertEqual(self.statut("configurer"), "fait")
+        etat.noter(self.m, "configurer", {"date": "x"})  # configuré par Sésame 1.0.0 : code sur le téléphone
+        statut, detail = self.detecte("configurer")
+        self.assertEqual(statut, "a_faire")
+        self.assertIn("code sur le téléphone → mot de passe", detail)
+        conf = self.lire(chemins.SESAME_CONF)
+        self.assertIn("connexion = mot-de-passe\n", conf)
+        self.ecrire(chemins.SESAME_CONF, conf.replace("connexion = mot-de-passe\n", "connexion = code\n"))
+        self.assertEqual(self.statut("configurer"), "fait")
 
     def test_premiere_connexion(self):
         self.ecrire(chemins.NSSWITCH, "passwd: files systemd authd\n")
@@ -181,7 +207,7 @@ class TestEnsemble(BaseEtapes):
         self.assertIsNone(etapes.derniere_reprise(self.m))
         self.assertTrue(reprise.reprendre(self.m, self.parametres(), "maintenant")[0])
         donnees = etapes.etat_complet(self.m)
-        self.assertEqual(donnees["version"], "1.0.0")
+        self.assertEqual(donnees["version"], VERSION)
         self.assertTrue(donnees["derniere_reprise"]["ok"])
         self.assertEqual(len(donnees["etapes"]), 8)
         self.assertIn("suivante", donnees)

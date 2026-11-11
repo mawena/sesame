@@ -1,4 +1,4 @@
-.TH SESAME\-ASSISTANT 1 "11 novembre 2026" "sesame 1.0.0" "Commandes de l'utilisateur"
+.TH SESAME\-ASSISTANT 1 "novembre 2026" "sesame 1.1.0" "Commandes de l'utilisateur"
 .SH NOM
 sesame\-assistant \- assistant graphique de Sésame (GTK 4 et libadwaita)
 .SH SYNOPSIS
@@ -10,11 +10,17 @@ Entra le compte local existant (même identifiant, même dossier personnel, mêm
 .PP
 La fenêtre montre, de haut en bas : un bandeau qui annonce l'étape suivante (ou le résultat de la dernière reprise du
 compte) ; le groupe « Compte Microsoft Entra » (ID du locataire, ID client, compte Entra, compte local, vérifiés en
-direct) avec un guide pas à pas de la création de l'application dans le portail Entra ; le groupe « Étapes »
+direct, et le choix « Connexion » : « Mot de passe Entra » (comme sur Windows), par défaut, ou « Code sur le
+téléphone ») avec un guide pas à pas de la création de l'application dans le portail Entra ; le groupe « Étapes »
 (sauvegarde, compte de secours, sortie du domaine Active Directory, installation d'authd, configuration, première
 connexion, reprise du compte, vérification), chacune avec son statut et un bouton « Lancer » ou « Refaire » ; enfin le
 journal de l'assistant root. Le menu propose le guide du portail, la désactivation de la connexion Entra, l'annulation
 de la reprise et la boîte « À propos ».
+.PP
+Première connexion, à l'écran d'accueil : « Non listé ? », l'adresse pro, « Microsoft Entra ID », le mot de passe Entra
+et la double authentification (Authenticator, code à usage unique, clé FIDO2). Avec le choix « Code sur le téléphone »,
+le code d'appareil à saisir sur le téléphone, puis un mot de passe local. Pour changer de mode plus tard, changez le
+choix « Connexion » et relancez « Configurer ».
 .PP
 Chaque étape détecte si elle est déjà faite : on peut les relancer sans risque. La reprise du compte se fait de
 préférence au prochain démarrage, avant l'écran de connexion.

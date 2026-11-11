@@ -8,6 +8,7 @@ from pathlib import Path
 
 from sesame import chemins, racine
 from tests.commun import A, CLIENT, LOCATAIRE, N, Base
+from sesame.version import VERSION
 
 DEPOT = Path(__file__).resolve().parent.parent
 
@@ -88,7 +89,8 @@ class TestProtocole(BaseRacine):
 
     def test_usage_code_2(self):
         for argv in ([], ["inconnue"], ["reprise"], ["configurer"], ["reprise", "--maintenant", "--au-demarrage"],
-                     ["configurer", "--locataire", "x"]):
+                     ["configurer", "--locataire", "x"],
+                     ["configurer", "--locataire", "x", "--client", "y", "--compte", "z", "--connexion", "windows"]):
             with self.subTest(argv=argv):
                 code, _, erreur = self.lancer(*argv)
                 self.assertEqual(code, 2)
@@ -111,7 +113,7 @@ class TestProtocole(BaseRacine):
         code, evts = self.evenements("etat")
         self.assertEqual(code, 0)
         etat = json.loads(evts[0]["texte"])
-        self.assertEqual(etat["version"], "1.0.0")
+        self.assertEqual(etat["version"], VERSION)
         self.assertEqual(len(etat["etapes"]), 8)
         self.assertEqual(evts[-1]["type"], "fin")
 
@@ -138,6 +140,15 @@ class TestActions(BaseRacine):
         self.assertEqual(code, 0, evts)
         self.assertIn(f"owner = {N}", self.lire(chemins.BROKER_CONF))
         self.assertIn("owner_extra_groups = sudo,docker", self.lire(chemins.BROKER_CONF))
+        self.assertIn("entra_auth = true", self.lire(chemins.BROKER_CONF))
+
+    def test_configurer_connexion_par_code(self):
+        self.ecrire(chemins.BROKER_MODELE, "[x]\n")
+        code, evts = self.evenements("configurer", "--locataire", LOCATAIRE, "--client", CLIENT, "--compte", N,
+                                     "--compte-local", A, "--connexion", "code")
+        self.assertEqual(code, 0, evts)
+        self.assertIn("entra_auth = false", self.lire(chemins.BROKER_CONF))
+        self.assertIn("code", evts[-1]["message"])
 
     def test_configurer_valeur_invalide(self):
         code, evts = self.evenements("configurer", "--locataire", "pas-un-guid", "--client", CLIENT, "--compte", N)

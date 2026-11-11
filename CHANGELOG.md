@@ -7,6 +7,25 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+### Ajouté
+
+- Connexion **comme sur Windows** : adresse pro, mot de passe Entra, puis double authentification (Microsoft
+  Authenticator, code) ou méthode sans mot de passe, grâce au flux « Entra authentication » d'authd 0.7.0 et du module
+  Entra 0.5.0. C'est le mode par défaut ; le poste est inscrit dans Entra à la première connexion
+  (`register_device = true`).
+- Réglage `connexion` (`mot-de-passe` ou `code`) dans `sesame.conf`, option `--connexion` de `sesame configurer`, et
+  choix « Connexion » dans l'assistant. Le code sur le téléphone reste proposé en secours.
+- Le guide du portail Entra décrit l'URI de redirection, l'inscription des appareils, la double authentification, AD FS
+  et l'accès conditionnel.
+
+### Modifié
+
+- L'étape « Installer » met à jour le module Entra déjà installé (`snap refresh`) et affiche les versions d'authd et du
+  module ; elle prévient s'ils sont trop anciens pour la connexion par mot de passe.
+- L'étape « Configurer » refuse la connexion par mot de passe avec des versions trop anciennes, et repasse à faire
+  quand le mode de connexion change (une installation faite en 1.0.0 passe ainsi au mode mot de passe en la relançant).
+- La fenêtre de première connexion explique le mode choisi.
+
 ## [1.0.0] - 2026-11-11
 
 Première version : Sésame branche un poste Ubuntu 24.04+ sur Microsoft Entra ID avec authd, puis le compte Entra reprend

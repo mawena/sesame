@@ -37,7 +37,7 @@ ETATS = [
      'Un compte administrateur local de dépannage.'),
     ('quitter_ad', 'Quitter le domaine Active Directory', 'fait', 'Le poste a quitté le domaine cofina.local', 'quitter-ad',
      'Retire le poste de l’ancien domaine.'),
-    ('installer', 'Installer authd et le module Entra', 'fait', 'authd 0.5.3 et authd-msentraid installés', 'installer',
+    ('installer', 'Installer authd et le module Entra', 'fait', 'authd 0.7.1 et le module Entra 0.5.0 sont installés.', 'installer',
      'Installe authd et le module Microsoft Entra.'),
     ('configurer', 'Configurer la connexion Entra', 'a_faire', 'Renseignez les champs ci-dessus, puis lancez', 'configurer',
      'Écrit la configuration d’authd pour votre annuaire.'),

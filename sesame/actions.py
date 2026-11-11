@@ -92,11 +92,21 @@ def installer(systeme):
     systeme.etape("Installation d'authd")
     systeme.executer(["apt-get", "update"])
     systeme.executer(["apt-get", "install", "-y", "authd", "gnome-shell", "yaru-theme-gnome-shell"])
-    systeme.etape("Installation du module Entra")
-    if not systeme.lancer(["snap", "list", "authd-msentraid"]).ok:
+    if systeme.lancer(["snap", "list", "authd-msentraid"]).ok:
+        systeme.etape("Mise à jour du module Entra")
+        systeme.executer(["snap", "refresh", "authd-msentraid"], tolerant=True)
+    else:
+        systeme.etape("Installation du module Entra")
         systeme.executer(["snap", "install", "authd-msentraid"])
-    _noter(systeme, "installer")
-    return "authd et le module Entra sont installés."
+    versions = cfg.versions_installees(systeme)
+    trop = cfg.trop_anciens(versions)
+    if trop:
+        systeme.avertir(f"Trop ancien pour la connexion par mot de passe Entra : {trop}. "
+                        "La connexion par code sur le téléphone reste possible.")
+    _noter(systeme, "installer", authd=cfg.texte_version(versions["authd"]),
+           module=cfg.texte_version(versions["module"]))
+    return (f"authd {cfg.texte_version(versions['authd'])} et le module Entra "
+            f"{cfg.texte_version(versions['module'])} sont installés.")
 
 
 # --- 5. configurer
@@ -120,12 +130,15 @@ def verifier_config(c):
         raise ErreurSesame("L'ID client doit être un GUID (8-4-4-4-12 caractères hexadécimaux).")
     if not cfg.valider_upn(c.compte):
         raise ErreurSesame("Le compte Entra doit ressembler à prenom.nom@entreprise.com.")
+    if not cfg.valider_connexion(c.connexion):
+        raise ErreurSesame(f"Mode de connexion inconnu : {c.connexion!r} (mot-de-passe ou code).")
     for nom in [c.compte_local, c.secours] + c.groupes:
         if not cfg.valider_nom(nom):
             raise ErreurSesame(f"Nom de compte ou de groupe invalide : {nom!r}.")
 
 
-def construire_config(systeme, locataire, client, compte, compte_local=None, secours=None, groupes=None):
+def construire_config(systeme, locataire, client, compte, compte_local=None, secours=None, groupes=None,
+                      connexion=None):
     """Réglages à écrire : saisie, sinon réglages déjà enregistrés, sinon valeurs détectées."""
     ancien, defaut = cfg.charger(systeme), cfg.defauts(systeme)
     base = ancien if ancien and ancien.compte_local else defaut
@@ -134,7 +147,8 @@ def construire_config(systeme, locataire, client, compte, compte_local=None, sec
     c = cfg.Config(locataire=locataire, client=client, compte=cfg.normaliser_upn(compte), compte_local=nom_local,
                    uid=local.uid if local else base.uid, gid=local.gid if local else base.gid,
                    dossier=local.dossier if local else base.dossier, secours=secours or base.secours or "secours",
-                   groupes=groupes if groupes is not None else base.groupes)
+                   groupes=groupes if groupes is not None else base.groupes,
+                   connexion=connexion or (ancien.connexion if ancien else cfg.MOT_DE_PASSE))
     if local is None and (not ancien or ancien.compte_local != nom_local):
         raise ErreurSesame(f"Le compte local {nom_local or '?'} n'existe pas.")
     verifier_config(c)
@@ -144,6 +158,13 @@ def construire_config(systeme, locataire, client, compte, compte_local=None, sec
 def configurer(systeme, c):
     if not systeme.existe(chemins.BROKER_MODELE):
         raise ErreurSesame("Le module authd-msentraid n'est pas installé : faites d'abord l'étape d'installation.")
+    if c.connexion == cfg.MOT_DE_PASSE:
+        trop = cfg.trop_anciens(cfg.versions_installees(systeme))
+        if trop:
+            raise ErreurSesame(f"La connexion par mot de passe Entra demande authd "
+                               f"{cfg.texte_version(cfg.VERSION_MIN_AUTHD)} et le module Entra "
+                               f"{cfg.texte_version(cfg.VERSION_MIN_MODULE)} : {trop}. Relancez l'étape « Installer » "
+                               "pour les mettre à jour, ou choisissez la connexion « Code sur le téléphone ».")
     systeme.etape("Écriture de sesame.conf")
     cfg.ecrire(systeme, c)
     systeme.etape("Déclaration du module à authd")
@@ -158,8 +179,11 @@ def configurer(systeme, c):
     systeme.etape("Redémarrage des services")
     systeme.executer(["systemctl", "restart", "authd"])
     systeme.executer(["systemctl", "restart", chemins.SERVICE_BROKER])
-    _noter(systeme, "configurer")
-    return "La connexion Entra est configurée."
+    _noter(systeme, "configurer", connexion=c.connexion)
+    if c.connexion == cfg.MOT_DE_PASSE:
+        return ("La connexion Entra est configurée : adresse pro et mot de passe Entra, comme sur Windows. "
+                "Le poste sera inscrit dans Entra à la première connexion.")
+    return "La connexion Entra est configurée : code à saisir sur le téléphone."
 
 
 def desactiver(systeme):

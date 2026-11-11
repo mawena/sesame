@@ -51,7 +51,19 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 
 ## Phase 7 — Mise en place sur le poste de Charles
 
-- [ ] Application « Ubuntu authd » créée dans le portail Entra (Charles)
+- [ ] Application « Ubuntu authd » créée dans le portail Entra (Charles), avec l'URI de redirection de la 1.1.0
 - [ ] Étapes 1 à 5 avec l'assistant
 - [ ] Première connexion Entra
 - [ ] Reprise du compte au démarrage, puis vérification
+
+## Phase 8 — Sésame 1.1.0 : connexion comme sur Windows
+
+- [x] Étude du flux « Entra authentication » (authd 0.7.0, module 0.5.0) : mot de passe Entra + double authentification, inscription de l'appareil
+- [x] Feature git flow `connexion-entra`
+- [x] Cœur : réglage `connexion`, `broker.conf` par mode, versions minimales, détection du changement de mode
+- [x] Ligne de commande, assistant root, assistant graphique (choix « Connexion »), texte de première connexion
+- [x] Guide du portail : URI de redirection, inscription des appareils, double authentification, AD FS
+- [x] Documentation : README, pages de manuel, site, conception 1.1.0
+- [x] Tests par la file Gagarine
+- [ ] Release 1.1.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
+- [ ] Mise à jour sur le poste

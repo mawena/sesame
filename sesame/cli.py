@@ -82,8 +82,11 @@ def configurer(systeme, args, saisie=input, lanceur=subprocess.run):
     local = args.compte_local or demander("Compte local à reprendre", d.compte_local, cfg.valider_nom, saisie)
     groupes = args.groupes if args.groupes is not None else demander("Groupes à redonner (séparés par des virgules)",
                                                                       ",".join(d.groupes), None, saisie)
+    connexion = args.connexion or demander(
+        "Connexion : mot-de-passe (adresse et mot de passe Entra, comme sur Windows) ou code (code sur le téléphone)",
+        d.connexion, cfg.valider_connexion, saisie)
     cmd = ["configurer", "--locataire", locataire, "--client", client, "--compte", cfg.normaliser_upn(compte),
-           "--compte-local", local, "--groupes", groupes]
+           "--compte-local", local, "--groupes", groupes, "--connexion", connexion]
     if args.secours:
         cmd += ["--secours", args.secours]
     return lancer_racine(cmd, lanceur=lanceur)
@@ -130,6 +133,8 @@ def analyseur():
     c = sous.add_parser("configurer", help="configure la connexion Entra")
     for opt in ("locataire", "client", "compte", "compte-local", "secours", "groupes"):
         c.add_argument("--" + opt)
+    c.add_argument("--connexion", choices=cfg.CONNEXIONS,
+                   help="mot-de-passe (comme sur Windows, par défaut) ou code (code sur le téléphone)")
     r = sous.add_parser("reprise", help="le compte Entra reprend le compte local")
     g = r.add_mutually_exclusive_group()
     g.add_argument("--maintenant", action="store_true")

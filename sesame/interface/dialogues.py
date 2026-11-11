@@ -53,14 +53,25 @@ def secours(parent, nom, rappel):
     d.present(parent)
 
 
-def premiere_connexion(parent, compte, rappel_vu=None):
+def texte_premiere_connexion(compte, connexion='mot-de-passe'):
+    """Marche à suivre à l'écran de connexion, selon le mode de connexion."""
+    debut = ('1. Fermez la session, puis, à l’écran de connexion, choisissez « Non listé ? ».\n'
+             '2. Saisissez votre adresse pro%s.\n'
+             '3. Choisissez « Microsoft Entra ID ».\n') % (' (%s)' % compte if compte else '')
+    if connexion == 'code':
+        suite = ('4. Scannez le QR code ou saisissez le code sur votre téléphone, et validez la connexion.\n'
+                 '5. Choisissez un mot de passe local : il servira à déverrouiller la session.\n\n')
+    else:
+        suite = ('4. Tapez votre mot de passe Entra, puis validez sur votre téléphone (Microsoft Authenticator '
+                 'ou code), comme sur Windows.\n'
+                 '5. Le poste est inscrit dans Entra et votre session s’ouvre. Si vous vous êtes connecté sans '
+                 'mot de passe (clé de sécurité, Authenticator), choisissez un mot de passe local.\n\n')
+    return debut + suite + 'Ensuite, revenez ici : l’étape sera cochée.'
+
+
+def premiere_connexion(parent, compte, rappel_vu=None, connexion='mot-de-passe'):
     """Explique la première connexion par Entra, avec un bouton pour fermer la session."""
-    corps = ('1. Fermez la session, puis, à l’écran de connexion, choisissez « Non listé ? ».\n'
-             '2. Saisissez votre compte Entra%s.\n'
-             '3. Choisissez « Microsoft Entra ID ».\n'
-             '4. Scannez le QR code ou saisissez le code sur votre téléphone, et validez la connexion.\n'
-             '5. Choisissez un mot de passe local : il servira à déverrouiller la session.\n\n'
-             'Ensuite, revenez ici : l’étape sera cochée.') % (' (%s)' % compte if compte else '')
+    corps = texte_premiere_connexion(compte, connexion)
     d = _alerte('Première connexion par Entra', corps,
                 [('plus-tard', 'Plus tard', None), ('fermer', 'Fermer la session', Adw.ResponseAppearance.SUGGESTED)],
                 'plus-tard', 'plus-tard')
