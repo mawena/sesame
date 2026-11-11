@@ -46,8 +46,8 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 
 - [x] Lien SSH du dépôt, `origin`, dépôt GitHub (« About » : site + dépôt APT)
 - [x] Release git flow 1.0.0, CHANGELOG, tag `v1.0.0`, push de `main`, `develop` et des tags
-- [ ] Release GitHub avec le `.deb` et `SHA256SUMS`
-- [ ] Publication dans le dépôt APT, vérification par `apt-get update` sans root
+- [x] Release GitHub avec le `.deb` et `SHA256SUMS`
+- [x] Publication dans le dépôt APT, vérification par `apt-get update` sans root
 
 ## Phase 7 — Mise en place sur le poste de Charles
 
