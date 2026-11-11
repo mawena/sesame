@@ -1,8 +1,8 @@
-"""Édition de /etc/nsswitch.conf : retrait de `sss`, ajout d'`authd` (fonctions pures, idempotentes)."""
+"""Édition de /etc/nsswitch.conf : retrait de `sss`, lecture des services d'une base (fonctions pures, idempotentes)."""
 import re
 
 BASES_SSS = ("passwd", "group", "shadow", "netgroup", "services", "sudoers", "automount")
-BASES_AUTHD = ("passwd", "group", "shadow")
+BASES_HIMMELBLAU = ("passwd", "group")
 
 
 def _separer(ligne):
@@ -49,7 +49,7 @@ def contient(texte, service, bases=BASES_SSS):
     return False
 
 
-def manque(texte, service, bases=BASES_AUTHD):
+def manque(texte, service, bases=BASES_HIMMELBLAU):
     """Bases présentes dans le fichier dont la ligne ne cite pas `service`."""
     presentes = {_base(_separer(l)[0]) for l in texte.split("\n")}
     return [b for b in bases if b in presentes and not contient(texte, service, (b,))]

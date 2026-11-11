@@ -10,24 +10,22 @@
     <name>mawena</name>
   </developer>
   <description>
-    <p>Sésame connects an Ubuntu 24.04 or newer desktop to Microsoft Entra ID through authd, then lets the Entra account take over the existing local account: same user ID, same home folder, same groups, same crontab.</p>
-    <p>The assistant detects the state of each step and proposes the next one:</p>
+    <p>Sésame joins an Ubuntu 24.04 or newer desktop to Microsoft Entra ID the way a Windows PC does, through Himmelblau: no Entra application or tenant ID to create. You give your work address and a machine name, and your existing local account is linked to your Entra account: same user ID, same home folder, same settings.</p>
+    <p>The assistant does everything in one go, with two password prompts from the system, before and after the build:</p>
     <ul>
-      <li>back up the configuration, create a rescue account, leave the Active Directory domain;</li>
-      <li>install and configure authd and its Entra broker;</li>
-      <li>take over the local account at the next boot, with automatic rollback if anything goes wrong;</li>
-      <li>check the result.</li>
+      <li>back up the configuration, create a rescue account, name the machine, leave the Active Directory domain;</li>
+      <li>build Himmelblau (stable branch) on the machine, as the user and without root (about 30 to 60 minutes), then install it;</li>
+      <li>link your account to Entra; you then sign in with your Entra password and confirm on your phone.</li>
     </ul>
-    <p>Administrator actions go through polkit; nothing is stored apart from public identifiers.</p>
-    <p xml:lang="fr">Sésame connecte un poste Ubuntu 24.04 ou plus récent à Microsoft Entra ID grâce à authd, puis fait reprendre au compte Entra le compte local existant : même identifiant, même dossier personnel, mêmes groupes, même crontab.</p>
-    <p xml:lang="fr">L’assistant détecte l’état de chaque étape et propose la suivante :</p>
+    <p>Each step detects whether it is already done and can be run again from the details page. Administrator actions go through polkit; nothing is paid for and no account is needed.</p>
+    <p xml:lang="fr">Sésame relie un poste Ubuntu 24.04 ou plus récent à Microsoft Entra ID comme un PC Windows, grâce à Himmelblau : aucune application Entra ni identifiant de locataire à créer. Vous indiquez votre adresse pro et le nom de la machine, et votre compte local existant est relié à votre compte Entra : même identifiant, même dossier personnel, mêmes réglages.</p>
+    <p xml:lang="fr">L’assistant fait tout d’un seul geste, avec deux demandes de mot de passe du système, avant et après la compilation :</p>
     <ul xml:lang="fr">
-      <li>sauvegarder la configuration, créer un compte de secours, quitter le domaine Active Directory ;</li>
-      <li>installer et configurer authd et son module Entra ;</li>
-      <li>reprendre le compte local au prochain démarrage, avec annulation automatique en cas de problème ;</li>
-      <li>vérifier le résultat.</li>
+      <li>sauvegarder la configuration, créer un compte de secours, nommer la machine, quitter le domaine Active Directory ;</li>
+      <li>compiler Himmelblau (branche stable) sur le poste, sous votre compte et sans root (environ 30 à 60 minutes), puis l’installer ;</li>
+      <li>relier votre compte à Entra ; vous vous connectez ensuite avec le mot de passe Entra et validez sur le téléphone.</li>
     </ul>
-    <p xml:lang="fr">Les actions d’administration passent par polkit ; rien n’est conservé hormis des identifiants publics.</p>
+    <p xml:lang="fr">Chaque étape détecte si elle est déjà faite et peut être relancée depuis la page des détails. Les actions d’administration passent par polkit ; rien n’est payant et aucun compte n’est nécessaire.</p>
   </description>
   <launchable type="desktop-id">io.github.mawena.Sesame.desktop</launchable>
   <provides>
@@ -37,7 +35,7 @@
   <screenshots>
     <screenshot type="default">
       <image>https://mawena.github.io/sesame/captures/apercu.png</image>
-      <caption>L’assistant : compte Entra, étapes et journal</caption>
+      <caption>L’assistant : adresse pro, nom de la machine et bouton Rejoindre</caption>
     </screenshot>
   </screenshots>
   <url type="homepage">https://mawena.github.io/sesame/</url>
@@ -56,6 +54,11 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="2.0.0" date="2026-11-11">
+      <description>
+        <p>Rejoindre Microsoft Entra ID comme un PC Windows, avec Himmelblau compilé sur le poste : seulement l'adresse pro et le nom de la machine.</p>
+      </description>
+    </release>
     <release version="1.1.0" date="2026-11-11">
       <description>
         <p>Connexion comme sur Windows : adresse pro, mot de passe Entra et double authentification, avec inscription du poste dans Entra. Le code sur le téléphone reste proposé.</p>

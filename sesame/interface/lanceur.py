@@ -98,32 +98,27 @@ def en_arriere(travail, rappel):
 
 
 def fermer_session(rappel=None):
-    """Ferme la session GNOME (déconnexion), sans confirmation supplémentaire."""
-    try:
-        Gio.Subprocess.new(['gnome-session-quit', '--logout', '--no-prompt'], Gio.SubprocessFlags.NONE)
-    except GLib.Error as erreur:
-        if rappel:
-            rappel(erreur.message)
+    """Ferme la session GNOME (déconnexion) par D-Bus : org.gnome.SessionManager.Logout(0), sans confirmation.
+    Repli : gnome-session-quit --logout --no-prompt. rappel(message_erreur) si les deux échouent."""
+    def repli():
+        try:
+            Gio.Subprocess.new(['gnome-session-quit', '--logout', '--no-prompt'], Gio.SubprocessFlags.NONE)
+        except GLib.Error as erreur:
+            if rappel:
+                rappel(erreur.message)
 
-
-def redemarrer(rappel=None):
-    """Redémarre le poste par logind (le même appel que « systemctl reboot »). rappel(message_erreur ou None)."""
     def fini(source, resultat):
         try:
             source.call_finish(resultat)
-            message = None
-        except GLib.Error as erreur:
-            message = erreur.message
-        if rappel:
-            rappel(message)
+        except GLib.Error:
+            repli()
 
     def connecte(source, resultat):
         try:
             connexion = Gio.bus_get_finish(resultat)
-        except GLib.Error as erreur:
-            if rappel:
-                rappel(erreur.message)
+        except GLib.Error:
+            repli()
             return
-        connexion.call('org.freedesktop.login1', '/org/freedesktop/login1', 'org.freedesktop.login1.Manager',
-                       'Reboot', GLib.Variant('(b)', (True,)), None, Gio.DBusCallFlags.NONE, -1, None, fini)
-    Gio.bus_get(Gio.BusType.SYSTEM, None, connecte)
+        connexion.call('org.gnome.SessionManager', '/org/gnome/SessionManager', 'org.gnome.SessionManager',
+                       'Logout', GLib.Variant('(u)', (0,)), None, Gio.DBusCallFlags.NONE, -1, None, fini)
+    Gio.bus_get(Gio.BusType.SESSION, None, connecte)

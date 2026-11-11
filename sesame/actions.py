@@ -2,8 +2,11 @@
 import re
 import tarfile
 
-from . import chemins, config as cfg, etat, nsswitch, reprise, sauvegarde, verification
-from .systeme import ErreurSesame
+from . import chemins, config as cfg, etapes, etat, himmelblau, nsswitch, sauvegarde
+from .systeme import ErreurSesame, ErreurSysteme
+
+MESSAGE_NOM_MACHINE = ("Nom de machine invalide : {!r} (1 à 15 lettres, chiffres ou tirets, sans tiret au début "
+                       "ni à la fin, pas uniquement des chiffres).")
 
 
 def _config_ou_defauts(systeme):
@@ -14,6 +17,29 @@ def _noter(systeme, cle, **extra):
     etat.noter(systeme, cle, dict(extra, date=systeme.date_iso()))
 
 
+def _enregistrer(systeme, **champs):
+    """Met à jour sesame.conf (créé à partir des valeurs détectées s'il manque)."""
+    c = _config_ou_defauts(systeme)
+    for cle, valeur in champs.items():
+        setattr(c, cle, valeur)
+    cfg.ecrire(systeme, c)
+    return c
+
+
+def compte_local_appelant(systeme):
+    """Compte local de la personne derrière pkexec s'il est ordinaire (UID 1000 à 59999), sinon None."""
+    uid = systeme.uid_appelant()
+    return next((u.nom for u in systeme.comptes_locaux().values() if u.uid == uid and 1000 <= uid <= 59999), None)
+
+
+def _compte_local(systeme, demande=None):
+    """Compte local à relier : celui qui est demandé, sinon l'appelant, sinon le premier compte ordinaire."""
+    nom = demande or compte_local_appelant(systeme) or cfg.defauts(systeme).compte_local
+    if not nom or nom not in systeme.comptes_locaux():
+        raise ErreurSesame(f"Le compte local {nom or '?'} n'existe pas.")
+    return nom
+
+
 # --- 1. sauvegarde
 def faire_sauvegarde(systeme, motif=""):
     c = _config_ou_defauts(systeme)
@@ -22,12 +48,32 @@ def faire_sauvegarde(systeme, motif=""):
 
 
 # --- 2. secours
-def creer_secours(systeme, nom, mot_de_passe):
-    """Crée (ou répare) le compte de secours ; le mot de passe passe par l'entrée standard de chpasswd."""
+def _empreinte(systeme, compte):
+    """Empreinte du mot de passe d'un compte local (/etc/shadow, champ 2) ; ErreurSesame si elle est inutilisable."""
+    empreinte = None
+    for ligne in systeme.lire(chemins.SHADOW).splitlines():
+        champs = ligne.split(":")
+        if champs[0] == compte and len(champs) > 1:
+            empreinte = champs[1]
+            break
+    if not empreinte or empreinte[0] in "!*" or ":" in empreinte:
+        raise ErreurSesame(f"Le compte {compte} n'a pas de mot de passe utilisable : impossible de le copier. "
+                           "Choisissez le mot de passe du compte de secours dans le mode avancé de l'assistant.")
+    return empreinte
+
+
+def creer_secours(systeme, nom, mot_de_passe=None, copier_de=None):
+    """Crée (ou répare) le compte de secours ; le mot de passe passe par l'entrée standard de chpasswd.
+    Sans mot de passe, `copier_de` donne le compte local dont l'empreinte est copiée (`chpasswd -e`)."""
     if not cfg.valider_nom(nom):
         raise ErreurSesame(f"Nom de compte invalide : {nom!r}.")
     existe = nom in systeme.comptes_locaux()
-    if not existe and not mot_de_passe:
+    empreinte = None
+    if copier_de and not mot_de_passe and not existe:
+        if copier_de not in systeme.comptes_locaux():
+            raise ErreurSesame(f"Le compte local {copier_de} n'existe pas : impossible d'en copier le mot de passe.")
+        empreinte = _empreinte(systeme, copier_de)
+    if not existe and not mot_de_passe and not empreinte:
         raise ErreurSesame("Un mot de passe est nécessaire pour créer le compte de secours.")
     if mot_de_passe and (len(mot_de_passe) < 8 or "\n" in mot_de_passe):
         raise ErreurSesame("Le mot de passe doit faire au moins 8 caractères, sur une seule ligne.")
@@ -37,10 +83,41 @@ def creer_secours(systeme, nom, mot_de_passe):
         systeme.executer(["useradd", "-m", "-s", "/bin/bash", "-c", "Compte de secours (Sésame)", "-G", "sudo", nom])
     if mot_de_passe:
         systeme.executer(["chpasswd"], entree=f"{nom}:{mot_de_passe}\n")
+    elif empreinte:
+        systeme.executer(["chpasswd", "-e"], entree=f"{nom}:{empreinte}\n")
+    _enregistrer(systeme, secours=nom)
     return f"Le compte de secours {nom} est prêt."
 
 
-# --- 3. quitter le domaine AD
+# --- 3. nom de la machine
+def _nom_machine_actuel(systeme):
+    """Nom statique (/etc/hostname), sans domaine ni espaces."""
+    lignes = systeme.lire(chemins.HOSTNAME).split()
+    return lignes[0].split(".")[0] if lignes else ""
+
+
+def changer_nom_machine(systeme, nom):
+    """Nom statique de la machine, ligne 127.0.1.1 de /etc/hosts et sesame.conf ; casse gardée."""
+    if not cfg.valider_nom_machine(nom):
+        raise ErreurSesame(MESSAGE_NOM_MACHINE.format(nom))
+    if _nom_machine_actuel(systeme) != nom:
+        systeme.executer(["hostnamectl", "hostname", nom])
+        lignes = systeme.lire(chemins.HOSTS).splitlines()
+        nouvelle = f"127.0.1.1\t{nom}"
+        if any(re.match(r"127\.0\.1\.1(\s|$)", l) for l in lignes):
+            lignes = [nouvelle if re.match(r"127\.0\.1\.1(\s|$)", l) else l for l in lignes]
+        else:
+            rang = next((i for i, l in enumerate(lignes) if re.match(r"127\.0\.0\.1(\s|$)", l)), -1)
+            lignes.insert(rang + 1, nouvelle)
+        systeme.ecrire(chemins.HOSTS, "\n".join(lignes) + "\n")
+        message = f"La machine s'appelle maintenant {nom}."
+    else:
+        message = f"La machine s'appelle déjà {nom}."
+    _enregistrer(systeme, nom_machine=nom)
+    return message
+
+
+# --- 4. quitter le domaine AD
 def _archiver_dossier_ad(systeme, upn):
     """Archive puis supprime /home/<UPN> (ancien dossier AD du même nom)."""
     dossier = f"/home/{upn}"
@@ -79,131 +156,223 @@ def quitter_ad(systeme):
     return "Le poste a quitté le domaine et SSSD ne sert plus."
 
 
-# --- 4. installer
-def installer(systeme):
-    texte = systeme.lire("/etc/os-release")
-    m = re.search(r'^VERSION_ID="?(\d+)\.(\d+)', texte, re.M)
-    version = (int(m.group(1)), int(m.group(2))) if m else None
+# --- 5. outils de compilation
+def _plage(systeme, fichier, compte):
+    """Vrai si /etc/subuid (ou subgid) donne une plage au compte."""
+    return any(l.split(":")[0] == compte for l in systeme.lire(fichier).splitlines())
+
+
+def installer_outils(systeme, compte_local=None):
+    """Installe podman, uidmap, git et make ; donne au compte local une plage subuid/subgid s'il n'en a pas."""
+    local = _compte_local(systeme, compte_local)
+    systeme.etape("Installation des outils de compilation")
+    try:
+        systeme.executer(["apt-get", "install", "-y"] + list(himmelblau.OUTILS))
+    except ErreurSysteme as e:
+        raise ErreurSesame(f"L'installation des outils de compilation a échoué ({e}). Vérifiez la connexion Internet "
+                           "du poste ; relancer « Rejoindre » reprend là où on s'était arrêté.") from None
+    if not (_plage(systeme, chemins.SUBUID, local) and _plage(systeme, chemins.SUBGID, local)):
+        systeme.etape(f"Plage d'identifiants pour {local}")
+        systeme.executer(["usermod", "--add-subuids", "100000-165535", "--add-subgids", "100000-165535", local])
+    return "Les outils de compilation sont installés."
+
+
+# --- 6. installer
+def _paquets_manquants(systeme):
+    return etapes.paquets_manquants(systeme)
+
+
+def _debs(systeme, paquets):
+    """{paquet: chemin du .deb} dans le dossier `paquets` ; ErreurSesame si le dossier n'existe pas."""
+    if not paquets or not systeme.est_dossier(paquets):
+        raise ErreurSesame(f"Le dossier des paquets Himmelblau n'existe pas : {paquets or '(non indiqué)'}. "
+                           "Compilez d'abord Himmelblau.")
+    trouves = himmelblau.debs_dans([n for n in systeme.lister(paquets) if n.endswith(".deb")])
+    return {p: f"{paquets.rstrip('/')}/{n}" for p, n in trouves.items()}
+
+
+def _paquets_complets(systeme, paquets):
+    try:
+        return all(p in _debs(systeme, paquets) for p in himmelblau.PAQUETS)
+    except ErreurSesame:
+        return False
+
+
+def installer(systeme, paquets):
+    """Installe les .deb compilés du dossier `paquets` (obligatoires, puis optionnels s'ils existent)."""
+    version = etapes.version_ubuntu(systeme)
     if version is None or version < (24, 4):
         raise ErreurSesame("Sésame demande Ubuntu 24.04 ou plus récent.")
-    if version == (24, 4):
-        systeme.etape("Ajout du PPA d'authd")
-        systeme.executer(["add-apt-repository", "-y", "ppa:ubuntu-enterprise-desktop/authd"])
-    systeme.etape("Installation d'authd")
-    systeme.executer(["apt-get", "update"])
-    systeme.executer(["apt-get", "install", "-y", "authd", "gnome-shell", "yaru-theme-gnome-shell"])
-    if systeme.lancer(["snap", "list", "authd-msentraid"]).ok:
-        systeme.etape("Mise à jour du module Entra")
-        systeme.executer(["snap", "refresh", "authd-msentraid"], tolerant=True)
-    else:
-        systeme.etape("Installation du module Entra")
-        systeme.executer(["snap", "install", "authd-msentraid"])
-    versions = cfg.versions_installees(systeme)
-    trop = cfg.trop_anciens(versions)
-    if trop:
-        systeme.avertir(f"Trop ancien pour la connexion par mot de passe Entra : {trop}. "
-                        "La connexion par code sur le téléphone reste possible.")
-    _noter(systeme, "installer", authd=cfg.texte_version(versions["authd"]),
-           module=cfg.texte_version(versions["module"]))
-    return (f"authd {cfg.texte_version(versions['authd'])} et le module Entra "
-            f"{cfg.texte_version(versions['module'])} sont installés.")
+    debs = _debs(systeme, paquets)
+    absents = [p for p in himmelblau.PAQUETS if p not in debs]
+    if absents:
+        raise ErreurSesame("Il manque dans " + paquets + " le paquet " + ", ".join(absents)
+                           + " : recompilez Himmelblau.")
+    for paquet, chemin in debs.items():
+        r = systeme.lancer(["dpkg-deb", "-f", chemin, "Package"])
+        if not r.ok or r.sortie.strip() != paquet:
+            raise ErreurSesame(f"Le fichier {chemin} n'est pas le paquet {paquet} : recompilez Himmelblau.")
+    systeme.etape("Installation de Himmelblau")
+    try:
+        systeme.executer(["apt-get", "install", "-y"] + [debs[p] for p in himmelblau.PAQUETS])
+    except ErreurSysteme as e:
+        raise ErreurSesame(f"L'installation de Himmelblau a échoué ({e}). Relancer « Rejoindre » reprend là où on "
+                           "s'était arrêté.") from None
+    optionnels = [debs[p] for p in himmelblau.PAQUETS_OPTIONNELS if p in debs]
+    if optionnels and systeme.existe(chemins.APPARMOR):
+        if not systeme.executer(["apt-get", "install", "-y"] + optionnels, tolerant=True).ok:
+            systeme.avertir("himmelblau-apparmor n'a pas pu être installé : AppArmor pourrait gêner Himmelblau.")
+    r = systeme.lancer(["dpkg-query", "-W", "-f=${Version}", "himmelblau"])
+    numero = r.sortie.strip() if r.ok else "?"
+    _noter(systeme, "installer", himmelblau=numero)
+    return f"Himmelblau {numero} est installé."
 
 
-# --- 5. configurer
-def _login_timeout(systeme):
-    """Porte LOGIN_TIMEOUT à 300 s s'il est plus bas."""
-    texte = systeme.lire(chemins.LOGIN_DEFS)
-
-    def corriger(m):
-        return m.group(0) if int(m.group(2)) >= 300 else m.group(1) + "300"
-
-    nouveau = re.sub(r"^(LOGIN_TIMEOUT[ \t]+)(\d+)", corriger, texte, flags=re.M)
-    if nouveau != texte:
-        systeme.ecrire(chemins.LOGIN_DEFS, nouveau)
+# --- 7. configurer
+def _retablir_integration(systeme):
+    """Remet Himmelblau dans PAM et NSS s'il en a été retiré (par « désactiver », par exemple)."""
+    if "pam_himmelblau" not in systeme.lire(chemins.PAM_COMMON_AUTH):
+        systeme.executer(["pam-auth-update", "--enable", _profil_pam(systeme)], tolerant=True)
+    nss = systeme.lire(chemins.NSSWITCH)
+    if nss and nsswitch.manque(nss, "himmelblau"):
+        systeme.ecrire(chemins.NSSWITCH, nsswitch.ajouter_service(nss, nsswitch.BASES_HIMMELBLAU, "himmelblau"))
 
 
-def verifier_config(c):
-    """Lève ErreurSesame si un réglage est invalide."""
-    if not cfg.valider_guid(c.locataire):
-        raise ErreurSesame("L'ID du locataire doit être un GUID (8-4-4-4-12 caractères hexadécimaux).")
-    if not cfg.valider_guid(c.client):
-        raise ErreurSesame("L'ID client doit être un GUID (8-4-4-4-12 caractères hexadécimaux).")
-    if not cfg.valider_upn(c.compte):
-        raise ErreurSesame("Le compte Entra doit ressembler à prenom.nom@entreprise.com.")
-    if not cfg.valider_connexion(c.connexion):
-        raise ErreurSesame(f"Mode de connexion inconnu : {c.connexion!r} (mot-de-passe ou code).")
-    for nom in [c.compte_local, c.secours] + c.groupes:
-        if not cfg.valider_nom(nom):
-            raise ErreurSesame(f"Nom de compte ou de groupe invalide : {nom!r}.")
+def _controler_integration(systeme):
+    """Signale (sans échouer) ce que les paquets auraient dû configurer : NSS et PAM."""
+    nss = systeme.lire(chemins.NSSWITCH)
+    if nsswitch.manque(nss, "himmelblau"):
+        systeme.avertir("nsswitch.conf ne cite pas himmelblau pour passwd et group : "
+                        "essayez « sudo update-nss add himmelblau » ou réinstallez nss-himmelblau.")
+    if "pam_himmelblau" not in systeme.lire(chemins.PAM_COMMON_AUTH):
+        systeme.avertir("PAM n'utilise pas pam_himmelblau (/etc/pam.d/common-auth) : "
+                        "essayez « sudo pam-auth-update » et cochez Himmelblau.")
 
 
-def construire_config(systeme, locataire, client, compte, compte_local=None, secours=None, groupes=None,
-                      connexion=None):
-    """Réglages à écrire : saisie, sinon réglages déjà enregistrés, sinon valeurs détectées."""
-    ancien, defaut = cfg.charger(systeme), cfg.defauts(systeme)
-    base = ancien if ancien and ancien.compte_local else defaut
-    nom_local = compte_local or base.compte_local
-    local = systeme.comptes_locaux().get(nom_local)
-    c = cfg.Config(locataire=locataire, client=client, compte=cfg.normaliser_upn(compte), compte_local=nom_local,
-                   uid=local.uid if local else base.uid, gid=local.gid if local else base.gid,
-                   dossier=local.dossier if local else base.dossier, secours=secours or base.secours or "secours",
-                   groupes=groupes if groupes is not None else base.groupes,
-                   connexion=connexion or (ancien.connexion if ancien else cfg.MOT_DE_PASSE))
-    if local is None and (not ancien or ancien.compte_local != nom_local):
-        raise ErreurSesame(f"Le compte local {nom_local or '?'} n'existe pas.")
-    verifier_config(c)
-    return c
+def configurer(systeme, compte, compte_local=None):
+    compte = cfg.normaliser_upn(compte)
+    if not cfg.valider_upn(compte):
+        raise ErreurSesame("L'adresse pro doit ressembler à prenom.nom@entreprise.com.")
+    local = _compte_local(systeme, compte_local)
+    manque = _paquets_manquants(systeme)
+    if manque:
+        raise ErreurSesame("Himmelblau n'est pas installé (manque : " + ", ".join(manque) + ") : "
+                           "faites d'abord l'étape « Installer Himmelblau ».")
+    systeme.etape("Configuration de Himmelblau")
+    existant = systeme.lire(himmelblau.CONFIG, None)
+    if existant is not None and not systeme.existe(himmelblau.CONFIG + ".sesame-origine"):
+        systeme.copier(himmelblau.CONFIG, himmelblau.CONFIG + ".sesame-origine")
+    systeme.ecrire(himmelblau.CONFIG, himmelblau.texte_config(existant or "", himmelblau.domaine(compte),
+                                                              himmelblau.USER_MAP), 0o644)
+    systeme.ecrire(himmelblau.USER_MAP, himmelblau.texte_user_map(systeme.lire(himmelblau.USER_MAP), local, compte),
+                   0o644)
+    systeme.etape("Démarrage des services")
+    systeme.executer(["systemctl", "enable", "--now"] + himmelblau.SERVICES)
+    systeme.executer(["systemctl", "restart"] + himmelblau.SERVICES)
+    _retablir_integration(systeme)
+    _controler_integration(systeme)
+    u = systeme.comptes_locaux()[local]
+    _enregistrer(systeme, compte=compte, compte_local=local, uid=u.uid, gid=u.gid, dossier=u.dossier)
+    _noter(systeme, "configurer", compte=compte, compte_local=local)
+    return (f"Le compte {local} est relié à {compte} : il garde son dossier et ses réglages, et se connecte avec "
+            "le mot de passe Entra.")
 
 
-def configurer(systeme, c):
-    if not systeme.existe(chemins.BROKER_MODELE):
-        raise ErreurSesame("Le module authd-msentraid n'est pas installé : faites d'abord l'étape d'installation.")
-    if c.connexion == cfg.MOT_DE_PASSE:
-        trop = cfg.trop_anciens(cfg.versions_installees(systeme))
-        if trop:
-            raise ErreurSesame(f"La connexion par mot de passe Entra demande authd "
-                               f"{cfg.texte_version(cfg.VERSION_MIN_AUTHD)} et le module Entra "
-                               f"{cfg.texte_version(cfg.VERSION_MIN_MODULE)} : {trop}. Relancez l'étape « Installer » "
-                               "pour les mettre à jour, ou choisissez la connexion « Code sur le téléphone ».")
-    systeme.etape("Écriture de sesame.conf")
-    cfg.ecrire(systeme, c)
-    systeme.etape("Déclaration du module à authd")
-    systeme.copier(chemins.BROKER_MODELE, chemins.BROKER_AUTHD)
-    systeme.etape("Configuration du module Entra")
-    if systeme.existe(chemins.BROKER_CONF) and not systeme.existe(chemins.BROKER_CONF + ".origine"):
-        systeme.copier(chemins.BROKER_CONF, chemins.BROKER_CONF + ".origine")
-    systeme.ecrire(chemins.BROKER_CONF, cfg.texte_broker(c))
-    _login_timeout(systeme)
-    texte = systeme.lire(chemins.NSSWITCH)
-    systeme.ecrire(chemins.NSSWITCH, nsswitch.ajouter_service(texte, nsswitch.BASES_AUTHD, "authd"))
-    systeme.etape("Redémarrage des services")
-    systeme.executer(["systemctl", "restart", "authd"])
-    systeme.executer(["systemctl", "restart", chemins.SERVICE_BROKER])
-    _noter(systeme, "configurer", connexion=c.connexion)
-    if c.connexion == cfg.MOT_DE_PASSE:
-        return ("La connexion Entra est configurée : adresse pro et mot de passe Entra, comme sur Windows. "
-                "Le poste sera inscrit dans Entra à la première connexion.")
-    return "La connexion Entra est configurée : code à saisir sur le téléphone."
+# --- 8. première connexion
+def noter_premiere_connexion(systeme):
+    _noter(systeme, "premiere_connexion")
+    return "Première connexion notée."
+
+
+# --- rejoindre Entra d'un seul geste
+def _fait(systeme, id_, c=None):
+    """Vrai si l'étape est faite (ou sans objet) d'après la détection (sans root) des étapes."""
+    return etapes.DETECTIONS[id_](systeme, c or _config_ou_defauts(systeme))[0] in (etapes.FAIT, etapes.SANS_OBJET)
+
+
+def _sauter(systeme, texte, fait):
+    """Annonce l'étape ; vrai s'il faut la faire."""
+    systeme.etape(f"{texte} : déjà fait" if fait else texte)
+    return not fait
+
+
+def rejoindre(systeme, compte, nom_machine, compte_local=None, paquets=None):
+    """Toutes les étapes root pour rejoindre Entra ; chacune est sautée si elle est déjà faite, donc relancer
+    après un échec reprend où l'on s'était arrêté. Tout est validé avant la première modification.
+    Si Himmelblau n'est pas installé et que `paquets` (dossier des .deb compilés) est incomplet, s'arrête en
+    réussite après les outils avec un événement `compilation_requise` : l'appelant compile, puis relance."""
+    compte = cfg.normaliser_upn(compte)
+    if not cfg.valider_upn(compte):
+        raise ErreurSesame("L'adresse pro doit ressembler à prenom.nom@entreprise.com.")
+    if not cfg.valider_nom_machine(nom_machine):
+        raise ErreurSesame(MESSAGE_NOM_MACHINE.format(nom_machine))
+    local = _compte_local(systeme, compte_local)
+    secours = _config_ou_defauts(systeme).secours or "secours"
+    if secours not in systeme.comptes_locaux():
+        _empreinte(systeme, local)  # lève l'erreur tout de suite si le mot de passe n'est pas copiable
+    version = etapes.version_ubuntu(systeme)
+    if version is None or version < (24, 4):
+        raise ErreurSesame("Sésame demande Ubuntu 24.04 ou plus récent.")
+
+    if _sauter(systeme, "Sauvegarde de la configuration", etat.derniere_sauvegarde(systeme) is not None):
+        sauvegarde.faire(systeme, local, "rejoindre")
+    if _sauter(systeme, f"Compte de secours {secours}", _fait(systeme, "secours")):
+        creer_secours(systeme, secours, copier_de=local)
+    nom_fait = _nom_machine_actuel(systeme) == nom_machine and _enregistre(systeme, "nom_machine") == nom_machine
+    if _sauter(systeme, f"Nom de la machine : {nom_machine}", nom_fait):
+        changer_nom_machine(systeme, nom_machine)
+    if _sauter(systeme, "Sortie du domaine Active Directory", _fait(systeme, "quitter_ad")):
+        quitter_ad(systeme)
+    if paquets:
+        dossier = paquets.rstrip("/").rpartition("/")[0]
+        if _enregistre(systeme, "dossier_compilation") != dossier:
+            _enregistrer(systeme, dossier_compilation=dossier)
+    if _sauter(systeme, "Outils de compilation", _fait(systeme, "outils")):
+        installer_outils(systeme, local)
+    installe = not _paquets_manquants(systeme)
+    if not installe and not _paquets_complets(systeme, paquets):
+        systeme.dire("compilation_requise", paquets or "")
+        return "Préparation terminée : Himmelblau doit maintenant être compilé."
+    if _sauter(systeme, "Installation de Himmelblau", installe):
+        installer(systeme, paquets)
+    enregistre = cfg.charger(systeme)
+    deja = (enregistre is not None and enregistre.compte == compte and enregistre.compte_local == local
+            and _fait(systeme, "configurer", enregistre))
+    if _sauter(systeme, "Liaison du compte à Entra", deja):
+        configurer(systeme, compte, local)
+    _noter(systeme, "rejoindre")
+    return (f"Le poste {nom_machine} est prêt. Déconnectez-vous, choisissez votre compte à l'écran d'accueil, "
+            f"tapez le mot de passe Entra de {compte} et validez sur le téléphone. Le poste sera inscrit dans Entra "
+            "à cette première connexion, puis vous choisirez un code PIN (Windows Hello) pour les connexions "
+            "suivantes.")
+
+
+def _enregistre(systeme, champ):
+    c = cfg.charger(systeme)
+    return getattr(c, champ) if c else ""
+
+
+# --- désactiver
+def _profil_pam(systeme):
+    """Nom du profil pam-auth-update de Himmelblau, lu dans /usr/share/pam-configs/."""
+    for nom in systeme.lister(chemins.PAM_CONFIGS):
+        if "himmelblau" in nom.lower() or "pam_himmelblau" in systeme.lire(f"{chemins.PAM_CONFIGS}/{nom}"):
+            return nom
+    return "himmelblau"
 
 
 def desactiver(systeme):
-    systeme.supprimer(chemins.BROKER_AUTHD)
-    systeme.executer(["systemctl", "restart", "authd"])
-    return "La connexion Entra est coupée (rien n'est désinstallé). L'étape « configurer » la rétablit."
-
-
-# --- 7. reprise
-def reprendre(systeme, mode):
-    c = cfg.charger(systeme)
-    if c is None or not (c.compte and c.compte_local and c.uid and c.dossier):
-        raise ErreurSesame("Sésame n'est pas configuré : faites d'abord l'étape « Configurer ».")
-    p = reprise.Parametres.depuis_config(c)
-    if mode == "au-demarrage":
-        return True, reprise.programmer(systeme, p)
-    return reprise.reprendre(systeme, p, mode)
-
-
-# --- 8. vérification
-def noter_verification(systeme):
-    _noter(systeme, "verification")
-    return "Vérification notée."
+    """Retour à la connexion locale seule : rien n'est désinstallé, « rejoindre » rétablit tout."""
+    c = _config_ou_defauts(systeme)
+    local = c.compte_local or _compte_local(systeme)
+    systeme.etape("Retrait du compte de user-map")
+    if systeme.existe(himmelblau.USER_MAP):
+        systeme.ecrire(himmelblau.USER_MAP, himmelblau.retirer_user_map(systeme.lire(himmelblau.USER_MAP), local), 0o644)
+    systeme.etape("Retrait de Himmelblau de PAM")
+    if not systeme.executer(["pam-auth-update", "--disable", _profil_pam(systeme)], tolerant=True).ok:
+        systeme.avertir("pam-auth-update n'a pas pu retirer Himmelblau de PAM : à vérifier.")
+    systeme.etape("Arrêt des services")
+    systeme.executer(["systemctl", "disable", "--now"] + himmelblau.SERVICES, tolerant=True)
+    etat.retirer(systeme, "configurer")
+    _noter(systeme, "desactiver")
+    return "La connexion Entra est coupée (rien n'est désinstallé). « Rejoindre » la rétablit."

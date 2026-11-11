@@ -1,29 +1,29 @@
-.TH SESAME\-ASSISTANT 1 "novembre 2026" "sesame 1.1.0" "Commandes de l'utilisateur"
+.TH SESAME\-ASSISTANT 1 "novembre 2026" "sesame 2.0.0" "Commandes de l'utilisateur"
 .SH NOM
 sesame\-assistant \- assistant graphique de Sésame (GTK 4 et libadwaita)
 .SH SYNOPSIS
 .B sesame\-assistant
 .SH DESCRIPTION
 .B sesame\-assistant
-ouvre la fenêtre de Sésame, qui connecte le poste Ubuntu à Microsoft Entra ID par authd, puis fait reprendre au compte
-Entra le compte local existant (même identifiant, même dossier personnel, mêmes groupes, même crontab).
+ouvre la fenêtre de Sésame, qui relie le poste Ubuntu à Microsoft Entra ID avec Himmelblau, comme un PC Windows. Le
+compte local existant est gardé tel quel (même identifiant, même dossier personnel, mêmes groupes).
 .PP
-La fenêtre montre, de haut en bas : un bandeau qui annonce l'étape suivante (ou le résultat de la dernière reprise du
-compte) ; le groupe « Compte Microsoft Entra » (ID du locataire, ID client, compte Entra, compte local, vérifiés en
-direct, et le choix « Connexion » : « Mot de passe Entra » (comme sur Windows), par défaut, ou « Code sur le
-téléphone ») avec un guide pas à pas de la création de l'application dans le portail Entra ; le groupe « Étapes »
-(sauvegarde, compte de secours, sortie du domaine Active Directory, installation d'authd, configuration, première
-connexion, reprise du compte, vérification), chacune avec son statut et un bouton « Lancer » ou « Refaire » ; enfin le
-journal de l'assistant root. Le menu propose le guide du portail, la désactivation de la connexion Entra, l'annulation
-de la reprise et la boîte « À propos ».
+La page « Rejoindre Microsoft Entra ID » demande : l'\fBadresse pro\fR et le \fBnom de la machine\fR (prérempli avec le
+nom actuel, sans domaine). Le bouton « Rejoindre » ouvre une fenêtre d'authentification d'Ubuntu (mot de passe actuel)
+pour la préparation, puis Himmelblau (branche stable\-4.x, gratuite) est compilé sous le compte de l'utilisateur, sans
+root, avec la progression et le journal affichés (30 à 60 minutes, environ 6 Go de RAM ; la fenêtre peut être fermée, la
+compilation continue). Une seconde fenêtre d'authentification installe et configure.
 .PP
-Première connexion, à l'écran d'accueil : « Non listé ? », l'adresse pro, « Microsoft Entra ID », le mot de passe Entra
-et la double authentification (Authenticator, code à usage unique, clé FIDO2). Avec le choix « Code sur le téléphone »,
-le code d'appareil à saisir sur le téléphone, puis un mot de passe local. Pour changer de mode plus tard, changez le
-choix « Connexion » et relancez « Configurer ».
+La page finale dit que le poste est prêt : se déconnecter, choisir son compte à l'écran d'accueil, taper le mot de
+passe Entra de l'adresse pro et valider sur le téléphone. Le poste est inscrit dans Entra à cette première connexion,
+puis on choisit un code PIN (Windows Hello) pour les connexions suivantes. Le bouton « Se déconnecter » ferme la
+session.
 .PP
-Chaque étape détecte si elle est déjà faite : on peut les relancer sans risque. La reprise du compte se fait de
-préférence au prochain démarrage, avant l'écran de connexion.
+Le menu propose : « Détails » (la liste des étapes et leur état, chacune relançable), « Vérifier », « Mettre à jour
+Himmelblau » (recompile si la branche stable a avancé), « Désactiver la
+connexion Entra » (retour à la connexion locale seule) et la boîte « À propos ».
+.PP
+Chaque étape détecte si elle est déjà faite : on peut tout relancer sans risque.
 .PP
 L'assistant tourne sous l'identité de l'utilisateur et ne modifie rien lui\-même. Les actions d'administrateur passent
 par
@@ -32,23 +32,29 @@ et
 .BR sesame\-racine ,
 sous la politique polkit \fBio.github.mawena.sesame.racine\fR : le mot de passe est demandé dans la fenêtre
 d'authentification d'Ubuntu. Si elle est annulée, l'assistant affiche « Authentification annulée ». Une seule action
-tourne à la fois, et la fenêtre ne se bloque jamais. Le mot de passe du compte de secours passe par l'entrée standard de
-l'assistant root et n'est jamais écrit.
+tourne à la fois, et la fenêtre ne se bloque jamais. Le mot de passe du compte de secours
+passe par l'entrée standard de l'assistant root et n'est jamais écrit.
 .PP
 Il faut PyGObject, GTK 4 et libadwaita 1.5 ou plus (paquets recommandés python3\-gi, gir1.2\-gtk\-4.0 et
 gir1.2\-adw\-1) ; s'il en manque, le programme dit quel paquet installer.
 .SH FICHIERS
 .TP
 .I /etc/sesame/sesame.conf
-Réglages écrits par l'étape « Configurer la connexion Entra ».
+Réglages de Sésame.
+.TP
+.I /etc/himmelblau/himmelblau.conf
+Configuration de Himmelblau (section
+.BR [global] ).
+.TP
+.I /etc/himmelblau/user\-map
+Liaison du compte local avec l'adresse pro.
+.TP
+.I ~/.local/share/sesame/himmelblau
+Clone de Himmelblau et paquets compilés.
 .TP
 .I /var/lib/sesame/etat.json
 Ce que Sésame a fait et quand (lisible sans droits particuliers).
-.TP
-.I /var/lib/sesame/derniere-reprise.json
-Résultat de la dernière reprise du compte, affiché dans le bandeau.
 .SH VOIR AUSSI
-.BR sesame (1),
 .BR sesame (8),
 .BR pkexec (1)
 .SH AUTEUR

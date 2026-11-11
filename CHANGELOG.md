@@ -7,6 +7,41 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [2.0.0] - 2026-11-11
+
+### Modifié
+
+- **Passage à Himmelblau** : Sésame relie le poste à Microsoft Entra ID comme un PC Windows, sans application ni ID à
+  créer dans Entra. Le compte local est gardé tel quel (UID, dossier, groupes) et relié au compte Entra par le
+  `user_map_file` de Himmelblau ; le poste est inscrit dans Entra à la première connexion, puis un code PIN (Windows
+  Hello) est choisi. Version majeure : changement incompatible.
+- **Assistant simplifié** : une seule page « Rejoindre Microsoft Entra ID » (adresse pro et nom de la machine), la
+  progression affichée, puis la marche à suivre pour la première connexion.
+- `sesame etat --json` : la clé `derniere_reprise` disparaît ; les étapes deviennent `sauvegarde`, `secours`,
+  `nom_machine`, `quitter_ad`, `outils`, `compiler`, `installer`, `configurer`, `premiere_connexion`.
+- Himmelblau (branche **stable-4.x**) est **compilé sur le poste**, sous l'utilisateur, par podman : gratuit, sans
+  abonnement (voie « self-built » de l'installateur officiel), puis installé par root. Environ 30 à 60 minutes, ~6 Go de
+  RAM, ~10 Go de disque, par la file Gagarine si elle est présente.
+
+### Ajouté
+
+- `sesame rejoindre [--compte ADRESSE] [--nom-machine NOM]` : prépare le poste (root), compile Himmelblau sous
+  l'utilisateur, puis l'installe et le configure (root).
+- `sesame compiler` et `sesame mettre-a-jour [--forcer]` (recompile si la branche stable a avancé, puis réinstalle) ;
+  « Mettre à jour Himmelblau » dans le menu de l'assistant.
+- Étapes `nom-machine`, `outils`, `compiler` et `premiere-connexion` ; option `--copier` de `sesame secours` (reprend le mot de
+  passe Ubuntu actuel).
+- Vérification, après l'installation, que PAM, NSS et GDM sont bien configurés par les paquets Himmelblau.
+
+### Retiré
+
+- authd et son module Entra (snap `authd-msentraid`).
+- L'ID du locataire et l'ID client, et le guide de création de l'application dans le portail Entra
+  (`sesame portail`).
+- Le mode de connexion (`--connexion`, `mot-de-passe` ou `code`) et les groupes redonnés (`--groupes`).
+- La reprise du compte local par le compte Entra (`sesame reprise`, `sesame annuler-reprise`) et l'unité
+  `sesame-reprise.service`.
+
 ## [1.1.0] - 2026-11-11
 
 ### Ajouté

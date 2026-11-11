@@ -1,3 +1,16 @@
+sesame (2.0.0) unstable; urgency=medium
+
+  * Passage à Himmelblau : le poste rejoint Microsoft Entra ID comme un PC
+    Windows, sans application ni ID à créer dans Entra. Le compte local est
+    relié à l'adresse pro (user_map_file) et garde son UID et son dossier.
+  * Himmelblau stable-4.x est compilé gratuitement sur le poste (podman,
+    file Gagarine si présente) ; « sesame mettre-a-jour » le recompile.
+  * L'assistant ne demande plus que l'adresse pro et le nom de la machine.
+  * Retirés : authd, reprise du compte et sesame-reprise.service, guide du
+    portail, ID du locataire et du client, mode de connexion.
+
+ -- mawena <57989130+mawena@users.noreply.github.com>  Wed, 11 Nov 2026 17:30:09 +0000
+
 sesame (1.1.0) unstable; urgency=medium
 
   * Connexion comme sur Windows : adresse pro, mot de passe Entra et
