@@ -3,8 +3,8 @@ set -e
 
 if [ "$1" = "purge" ]; then
     # Les réglages partent à la purge. Les sauvegardes de /var/lib/sesame/sauvegardes restent : elles contiennent
-    # /etc/passwd, shadow, group… d'avant la reprise, et sont peut-être la seule façon de revenir en arrière après
-    # la désinstallation. On ne les supprime que sur décision de l'utilisateur.
+    # /etc/passwd, shadow, group… d'avant la configuration, et sont peut-être la seule façon de revenir en arrière
+    # après la désinstallation. /etc/himmelblau et le dépôt Himmelblau (jeton) appartiennent à Himmelblau et restent. On ne les supprime que sur décision de l'utilisateur.
     rm -rf /etc/sesame
 fi
 

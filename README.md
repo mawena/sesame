@@ -3,14 +3,11 @@
 **Site : [mawena.github.io/sesame](https://mawena.github.io/sesame/)** — dépôt APT signé, mises à jour par
 `sudo apt upgrade`.
 
-Sésame connecte un poste **Ubuntu Desktop 24.04 ou plus récent** à **Microsoft Entra ID** avec
-[authd](https://ubuntu.com/identity/authd) (Canonical) et son module `authd-msentraid` (snap), puis fait **reprendre au
-compte Entra le compte local existant** : même UID, même dossier personnel, mêmes groupes, même crontab. On retrouve son
-bureau, mais on s'y connecte avec son compte de l'entreprise.
-
-Depuis la 1.1.0, la connexion se fait **comme sur Windows** : adresse pro, mot de passe Entra, puis double
-authentification (Microsoft Authenticator, code à usage unique, clé FIDO2…). L'ancien mode, avec un code à saisir sur le
-téléphone, reste disponible.
+Sésame relie un poste **Ubuntu Desktop 24.04 ou plus récent** à **Microsoft Entra ID** avec
+[Himmelblau](https://himmelblau-idm.org), **comme on le fait sur un PC Windows** : on donne son **adresse pro** et le
+**nom de la machine**, c'est tout. À l'écran d'accueil, on tape ensuite le mot de passe Entra, on valide sur le
+téléphone, puis on choisit un code PIN. Le compte local existant est gardé tel quel : même UID, même dossier personnel,
+mêmes groupes, mêmes réglages.
 
 ![Aperçu de l'assistant Sésame](docs/captures/apercu.png)
 
@@ -60,187 +57,136 @@ sudo apt install ./sesame_<version>_all.deb
 
 ## À quoi ça sert
 
-Avec authd, on ouvre une session Ubuntu avec son compte Microsoft Entra. Mais ce compte arrive avec un autre
-identifiant, un autre dossier personnel et aucun groupe : le poste de tous les jours disparaît. Sésame remplace une suite
-de scripts manuels : il installe et configure authd, puis le compte Entra prend la place du compte local.
+Un PC Windows rejoint Entra avec une adresse et un mot de passe : aucune application à créer, aucun identifiant à
+chercher. Sésame fait la même chose sur Ubuntu, en s'appuyant sur Himmelblau :
 
-- **idempotent** : chaque étape détecte si elle est déjà faite, et on peut la relancer sans risque ;
-- **jamais destructeur sans retour** : une sauvegarde est faite avant chaque étape qui modifie quelque chose, la
-  reprise s'annule automatiquement si elle échoue, et à la main ;
-- **générique** : rien n'est propre à une entreprise ; domaine AD, compte local, groupes et UPN suggéré sont détectés
-  sur le poste et modifiables ;
-- **sans secret stocké** : l'ID du locataire et l'ID client ne sont pas des secrets ; le mot de passe du compte de
-  secours passe par l'entrée standard de l'assistant root et n'est jamais écrit.
+- **rien à créer dans Entra** : pas d'application, pas d'ID de locataire ni d'ID client. Himmelblau passe par les
+  applications de Microsoft, comme Windows, et retrouve le locataire à partir du domaine de l'adresse ;
+- **le compte local reste le même** : `user_map_file` relie votre compte local à votre compte Entra. Le dossier
+  personnel, l'UID, les groupes et la crontab ne bougent pas ; plus de reprise de compte, plus de redémarrage ;
+- **le poste est inscrit dans Entra** à la première connexion, sous son nom d'hôte, comme un PC Windows ; il apparaît
+  dans Entra › Appareils ;
+- **idempotent** : chaque étape détecte si elle est déjà faite, et on peut tout relancer sans risque ;
+- **jamais sans filet** : une sauvegarde avant chaque étape qui modifie quelque chose, un compte de secours, et
+  `sesame desactiver` pour revenir à la connexion locale seule ;
+- **gratuit** : Himmelblau (branche stable `stable-4.x`) est compilé sur le poste, sous votre compte, sans abonnement ;
+  c'est la voie gratuite prévue par l'[installateur officiel](https://himmelblau-idm.org) de Himmelblau (« self-built ») ;
+- **sans secret stocké** : le mot de passe du compte de secours passe par l'entrée standard de l'assistant root,
+  jamais en argument ni dans un journal.
 
-Sésame ne fait pas : la création de l'application dans le portail Entra (il l'explique pas à pas), ni plusieurs comptes
-Entra (seul le propriétaire, `allowed_users = OWNER`). En mode mot de passe (le défaut), il **inscrit le PC dans
-Entra** à la première connexion, comme un PC Windows : il apparaît dans Entra › Appareils, et c'est ce qui permet à authd
-de lire les groupes du compte sans secret client. En mode `code`, l'appareil n'est pas inscrit (`register_device =
-false`).
+Sésame ne fait pas : la création d'un compte Entra, ni plusieurs comptes Entra reliés à un même compte local.
 
 ## Prérequis
 
 - Ubuntu Desktop 24.04 ou plus récent, avec GNOME et GDM ;
 - un compte local avec les droits d'administration sur le poste ;
-- les droits d'administration sur le locataire Microsoft Entra pour créer l'application et donner le consentement (ou
-  quelqu'un qui peut le faire pour vous) ;
-- un accès à Internet (PPA d'authd, snap `authd-msentraid`, connexion Microsoft) ;
-- pour la connexion par mot de passe : authd 0.7.0 ou plus et `authd-msentraid` 0.5.0 ou plus (l'étape « Installer » met
-  les deux à jour), une méthode de double authentification enregistrée sur le compte, et un compte qui n'est pas fédéré
-  par AD FS (sinon, utilisez le mode `code`).
-
-## Créer l'application dans le portail Entra
-
-À faire une seule fois par locataire, dans le [portail Entra](https://entra.microsoft.com). L'assistant et
-`sesame portail` affichent les mêmes étapes.
-
-1. **Inscriptions d'applications** (Identité, Applications) puis **Nouvelle inscription**.
-2. Nom : « Ubuntu authd ». Types de comptes pris en charge : **Comptes dans cet annuaire d'organisation uniquement**
-   (locataire unique), puis **Inscrire**.
-3. Notez, sur la page de vue d'ensemble, l'**ID d'application (client)** et l'**ID de l'annuaire (locataire)**.
-4. **Autorisations de l'API** puis **Ajouter une autorisation**, **Microsoft Graph**, **Autorisations déléguées** :
-   `openid`, `profile`, `offline_access`, `User.Read` et `GroupMember.Read.All`.
-5. **Accorder le consentement administrateur** pour le locataire (bouton sur la même page).
-6. **Authentification**, **Ajouter une plateforme**, **Applications mobiles et de bureau** (client public/natif) :
-   URI de redirection `https://login.microsoftonline.com/common/oauth2/nativeclient`. Nécessaire à la connexion par mot
-   de passe.
-7. Même page, section Paramètres avancés : **Autoriser les flux de clients publics** sur **Oui**, puis **Enregistrer**.
-   Toujours utile : c'est la connexion de secours par code d'appareil.
-8. **Identité**, **Appareils**, **Paramètres de l'appareil** : « Les utilisateurs peuvent inscrire leurs appareils
-   auprès de Microsoft Entra ID » sur **Tous** (valeur par défaut) ou sur un groupe qui inclut le compte. Nécessaire à
-   la connexion par mot de passe, qui inscrit le PC.
-9. Vérifiez le compte : une méthode de double authentification est enregistrée
-   ([mysignins.microsoft.com/security-info](https://mysignins.microsoft.com/security-info)), et son domaine n'est pas
-   fédéré (Entra ID, Noms de domaine personnalisés, colonne « Fédéré »). Sans double authentification, ou avec un domaine
-   fédéré par AD FS, utilisez le mode `code`.
-10. **Accès conditionnel** : une stratégie qui exige un appareil conforme (Intune), ou qui bloque le flux par code
-    d'appareil ou les clients publics, peut bloquer la connexion. Excluez le compte de cette stratégie.
+- un compte Microsoft Entra avec une méthode de double authentification enregistrée
+  ([mysignins.microsoft.com/security-info](https://mysignins.microsoft.com/security-info)) ;
+- environ **10 Go de disque** et **6 Go de RAM** libres pour la compilation (30 à 60 minutes, par la file de Gagarine si
+  elle est présente), et **podman** (installé par Sésame, avec `git`, `make` et `uidmap`) ;
+- un accès à Internet (GitHub, Docker Hub, archive Ubuntu, connexion Microsoft). Si une stratégie d'accès conditionnel exige un appareil
+  conforme (Intune), excluez-en le compte.
 
 ## Utilisation
 
-Lancez **Sésame** depuis les applications, ou `sesame-assistant`. L'assistant montre chaque étape avec son état et propose
-la suivante ; la commande `sesame` donne la même chose dans un terminal (`sesame` seul affiche l'état et l'étape
-suivante). Les actions qui touchent au système demandent votre mot de passe dans la fenêtre d'authentification d'Ubuntu
-(pkexec).
+### Avec l'assistant
 
-| Étape | Commande | Ce qu'elle fait |
-|---|---|---|
-| Sauvegarder | `sesame sauvegarde` | copie `/etc/passwd`, `shadow`, `group`, `nsswitch.conf`, `pam.d`, `sssd`, `gdm3`, etc. et la crontab du compte local |
-| Compte de secours | `sesame secours` | crée un compte administrateur local de dépannage (mot de passe demandé deux fois) |
-| Quitter l'AD | `sesame quitter-ad` | quitte le domaine Active Directory et retire sssd de la configuration (sans objet sans domaine) |
-| Installer | `sesame installer` | ajoute le PPA d'authd, installe ou met à jour `authd` et le snap `authd-msentraid` |
-| Configurer | `sesame configurer [--connexion mot-de-passe\|code]` | écrit `/etc/sesame/sesame.conf` et la configuration du module Entra à partir du locataire, du client, du compte Entra et du mode de connexion |
-| Première connexion | | à l'écran d'accueil : « Non listé ? », votre adresse pro, « Microsoft Entra ID », mot de passe Entra, double authentification (mode `code` : code à saisir sur le téléphone, puis choix d'un mot de passe local) |
-| Reprise | `sesame reprise --au-demarrage` | le compte Entra reprend le compte local (voir ci-dessous) |
-| Vérifier | `sesame verifier` | contrôles sans root : compte, dossier, groupes, crontab, services, compte de secours |
+Lancez **Sésame** depuis les applications, ou `sesame-assistant`. Une seule page : **Adresse pro** et **Nom de la machine** (prérempli avec le nom actuel). Bouton **Rejoindre** : une
+fenêtre d'authentification d'Ubuntu (pkexec) demande votre mot de passe actuel pour la préparation (sauvegarde, compte
+de secours, nom, outils de compilation). Himmelblau est ensuite **compilé sous votre compte**, sans root, avec la
+progression et le journal affichés ; la fenêtre peut être fermée, la compilation continue et Sésame reprend où il en
+est. Une seconde fenêtre d'authentification installe et configure. Le menu offre **Détails** (les étapes et leur état,
+chacune relançable), **Vérifier**, **Mettre à jour Himmelblau**, **Désactiver la connexion Entra** et **À propos**.
+
+### En ligne de commande
+
+```bash
+sesame                                   # état des étapes et étape suivante
+sesame rejoindre                         # pose les questions qui manquent (adresse, nom), compile, installe
+sesame rejoindre --compte prenom.nom@entreprise.com --nom-machine PC-Prenom
+sesame compiler                          # compile Himmelblau seul (sous votre compte, sans root)
+sesame mettre-a-jour [--forcer]          # recompile si la branche stable a avancé, puis réinstalle
+sesame verifier                          # contrôles sans root
+sesame desactiver                        # retour à la connexion locale seule
+```
+
+Pour la compilation, `sesame rejoindre` lance d'abord la préparation (root), puis compile (`gagarine file` si Gagarine est
+installé, sinon directement ; jamais en root), puis relance l'assistant root avec les paquets compilés. Si la
+compilation est interrompue, relancer la commande reprend où l'on s'était arrêté.
+
+**Mise à jour de Himmelblau** : `sesame mettre-a-jour` (ou le menu de l'assistant) compare la branche `stable-4.x` à
+la version compilée ; si elle a avancé, il recompile puis réinstalle, sinon il dit « Himmelblau est à jour ».
 
 ### Première connexion
 
-À l'écran de connexion (GDM), en mode `mot-de-passe` :
+Déconnectez-vous, choisissez votre compte à l'écran d'accueil, tapez le **mot de passe Entra** de votre adresse pro et
+**validez sur le téléphone** (Microsoft Authenticator, code…). Le poste est inscrit dans Entra à cette première
+connexion ; Himmelblau vous fait ensuite choisir un **code PIN** (Windows Hello) pour les connexions et les
+déverrouillages suivants. Le mot de passe local de votre compte reste valable.
 
-1. cliquez sur « Non listé ? » et tapez votre adresse pro (par exemple `prenom.nom@entreprise.com`) ;
-2. choisissez « Microsoft Entra ID » ;
-3. tapez le mot de passe Entra ;
-4. validez la double authentification : approbation dans Microsoft Authenticator, code à usage unique, ou méthode sans
-   mot de passe (clé FIDO2, Authenticator sans mot de passe, Temporary Access Pass).
+## Les étapes
 
-Le code d'appareil (QR code, ou code à saisir sur le téléphone) reste proposé en secours. Hors connexion, authd garde
-une empreinte salée du mot de passe pour laisser entrer ; si la connexion s'est faite sans mot de passe (clé FIDO2,
-Authenticator), authd demande de choisir un mot de passe local à cette première connexion.
+`sesame rejoindre` les enchaîne, en sautant celles qui sont déjà faites ; on peut aussi les lancer une par une.
 
-En mode `code` : QR code ou code à saisir sur le téléphone, puis choix d'un mot de passe local.
-
-### Changer de mode, mettre à jour depuis la 1.0.0
-
-Pour changer de mode plus tard, changez le choix « Connexion » de l'assistant (ou `sesame configurer --connexion
-mot-de-passe|code`) et relancez « Configurer ». Une installation configurée par la 1.0.0 voit l'étape « Configurer »
-repasser à faire (« le mode de connexion a changé ») : la relancer suffit. authd demandera de se reconnecter par Entra,
-car changer `register_device` force une nouvelle authentification.
-
-## Ce que fait la reprise, et comment l'annuler
-
-La reprise se fait de préférence **au prochain démarrage** : un service systemd (`sesame-reprise.service`) tourne avant
-l'écran de connexion et avant toute session, donc aucun programme ne tourne sous l'un des deux comptes. Le service est
-activé par `sesame reprise --au-demarrage`, supprime d'abord le fichier de programmation (jamais de boucle), lance la
-reprise, l'annule si elle échoue, puis se désactive.
-
-La reprise :
-
-1. fait une sauvegarde `avant-reprise` et garde la crontab du compte local ;
-2. supprime le compte local (`userdel` sans `-r`) ;
-3. donne au compte Entra l'UID et le GID du compte local (`authctl user set-uid`, `authctl group set-gid`) ;
-4. lui donne le dossier personnel de l'ancien compte, sans jamais laisser authctl déplacer son contenu ;
-5. met à jour ce qui citait l'ancien compte : `subuid`, `subgid`, unités systemd (`User=`, `Group=`), VMware, connexion
-   automatique de GDM ; réinstalle la crontab pour le compte Entra et copie la photo et les réglages d'AccountsService.
-
-**Annuler** : `sesame annuler-reprise` (ou le menu de l'assistant) remet le dossier, l'UID, le GID, les fichiers de
-`/etc` et la crontab d'avant, depuis la sauvegarde. Pour seulement retirer une reprise programmée :
-`sesame reprise --annuler-programmation`. Pour couper la connexion Entra sans rien désinstaller : `sesame desactiver`
-(`sesame configurer` la rétablit).
-
-## Configuration
-
-`/etc/sesame/sesame.conf` (INI, écrit par l'étape « configurer ») :
-
-```ini
-[entra]
-locataire = 00000000-0000-0000-0000-000000000000   ; ID de l'annuaire
-client = 00000000-0000-0000-0000-000000000000      ; ID d'application
-compte = prenom.nom@entreprise.com                 ; UPN, en minuscules
-connexion = mot-de-passe                           ; ou « code » (code sur le téléphone)
-
-[local]
-compte = charles-gamligo        ; compte local que le compte Entra reprendra
-uid = 1000
-gid = 1000
-dossier = /home/charles-gamligo
-secours = secours               ; compte local administrateur de dépannage
-
-[groupes]
-supplementaires = sudo,lpadmin,adm,docker   ; groupes redonnés au compte Entra
-```
-
-`connexion` vaut `mot-de-passe` (défaut : adresse, mot de passe Entra et double authentification, comme sur Windows)
-ou `code` (code d'appareil sur le téléphone, comportement de la 1.0.0). Sésame en déduit `broker.conf`, le fichier du
-module Entra (`/var/snap/authd-msentraid/current/broker.conf`) :
-
-| Réglage | `mot-de-passe` | `code` |
+| Étape | Commande | Ce qu'elle fait |
 |---|---|---|
-| `[msentraid] register_device` | `true` (le PC est inscrit dans Entra) | `false` |
-| `[flows] device_code` | `true` (secours) | `true` |
-| `[flows] entra_auth` | `true` | `false` |
+| Sauvegarder | `sesame sauvegarde` | copie la configuration des comptes et de la connexion avant toute modification |
+| Compte de secours | `sesame secours [--copier]` | crée un compte administrateur local de dépannage ; mot de passe demandé deux fois, ou `--copier` pour reprendre le mot de passe Ubuntu actuel |
+| Nommer la machine | `sesame nom-machine NOM` | 1 à 15 caractères (lettres, chiffres, tirets), `hostnamectl` et `/etc/hosts` |
+| Quitter l'AD | `sesame quitter-ad` | quitte un éventuel domaine Active Directory (sans objet sinon) |
+| Outils | `sesame outils` | installe `podman`, `uidmap`, `git`, `make` ; vérifie les plages `subuid`/`subgid` du compte |
+| Compiler | `sesame compiler` | clone `stable-4.x` dans `~/.local/share/sesame/himmelblau` et compile les `.deb` dans un conteneur podman, sous votre compte (environ 30 à 60 min, ~6 Go de RAM, ~10 Go de disque) |
+| Installer | `sesame installer` | installe les `.deb` compilés : `himmelblau`, `pam-himmelblau`, `nss-himmelblau` (et `himmelblau-apparmor` si AppArmor est présent) |
+| Configurer | `sesame configurer [--compte ADRESSE] [--compte-local NOM]` | écrit `himmelblau.conf` et `user-map`, active les services |
+| Première connexion | `sesame premiere-connexion` | explique la marche à suivre et la note |
+| Vérifier | `sesame verifier` | contrôles sans root : service, NSS, PAM, `user-map`, nom d'hôte |
 
-L'étape « Configurer » refuse le mode `mot-de-passe` si authd est plus ancien que 0.7.0 ou `authd-msentraid` plus ancien
-que 0.5.0, et propose le mode `code`.
+Les paquets configurent eux-mêmes PAM, NSS et GDM ; Sésame le **vérifie** après coup et signale ce qui manque.
 
-Fichiers de `/var/lib/sesame` :
+## Désactiver
 
-| Fichier | Rôle |
+`sesame desactiver` (ou le menu de l'assistant) retire votre compte de `user-map`, désactive le profil PAM de
+Himmelblau et arrête ses services. Rien n'est désinstallé : vous vous connectez à nouveau en local seulement.
+`sesame rejoindre` rétablit tout.
+
+## Ce que Sésame modifie
+
+| Fichier | Modification |
 |---|---|
-| `etat.json` | ce que Sésame a fait et quand, dont le mode de connexion configuré (lisible sans root, sans secret) |
-| `sauvegardes/AAAAMMJJ-HHMMSS[-motif]/` | sauvegardes (dossier 0700) ; conservées à la purge du paquet |
-| `reprise-programmee` | présent : reprise au prochain démarrage |
-| `reprise-etat.json` | état d'une reprise en cours, pour l'annuler |
-| `derniere-reprise.json` | résultat de la dernière reprise |
+| `/etc/sesame/sesame.conf` | réglages de Sésame (compte, compte local, compte de secours, nom de la machine) |
+| `/etc/hostname`, `/etc/hosts` | nom de la machine (`hostnamectl`, ligne `127.0.1.1`) |
+| `~/.local/share/sesame/himmelblau` | clone de Himmelblau et paquets compilés (`packaging/`), sous votre compte |
+| `/etc/himmelblau/himmelblau.conf` | section `[global]` : `domain` (domaine de l'adresse) et `user_map_file` ; le reste du fichier est gardé, copie `.sesame-origine` |
+| `/etc/himmelblau/user-map` | une ligne `compte-local:adresse` |
+| services `himmelblaud`, `himmelblaud-tasks` | activés et démarrés |
+| compte de secours | créé avec le mot de passe choisi (ou l'empreinte du mot de passe actuel avec `--copier`), dans `sudo` |
+| `/var/lib/sesame/` | `etat.json` (ce que Sésame a fait, sans secret) et `sauvegardes/` (conservées à la purge du paquet) |
+
+## Mise à jour depuis la 1.x
+
+La 2.0.0 remplace authd par Himmelblau : c'est un changement incompatible. `sesame.conf` de la 1.x est lu sans erreur
+(les clés inconnues sont ignorées) et `sesame-reprise.service` disparaît du paquet. Les options `--locataire`,
+`--client`, `--connexion`, `--groupes` et les commandes `portail`, `reprise`, `annuler-reprise` sont retirées ; la
+connexion se fait avec Himmelblau (adresse pro, mot de passe Entra, téléphone, PIN). Si vous aviez rejoint avec authd,
+lancez `sesame rejoindre` : l'application Entra créée pour authd n'est plus utilisée.
 
 ## Dépannage
 
-- **Garder un accès** : ne fermez pas l'étape « compte de secours » ; si la session graphique ne s'ouvre plus, passez en
-  console avec `Ctrl+Alt+F3` et connectez-vous avec le compte de secours.
-- **Journaux** : `sudo journalctl -u authd -u snap.authd-msentraid.authd-msentraid.service -u sesame-reprise`.
-- **Résultat de la reprise** : `cat /var/lib/sesame/derniere-reprise.json`.
+- **Garder un accès** : ne supprimez pas le compte de secours ; si la session graphique ne s'ouvre plus, passez en
+  console avec `Ctrl+Alt+F3` et connectez-vous avec le compte de secours ou votre mot de passe local.
+- **Journaux** : `sudo journalctl -u himmelblaud -u himmelblaud-tasks`.
+- **Compilation échouée** : relancez `sesame compiler` (ou `sesame rejoindre`) ; le journal est affiché. Vérifiez l'espace disque (~10 Go) et la RAM (~6 Go). La file de Gagarine, si elle est présente, peut la retarder : `gagarine file --etat`.
 - **Couper la connexion Entra** : `sesame desactiver`.
-- **Revenir en arrière** : `sesame annuler-reprise`, ou restaurez les fichiers de la sauvegarde la plus récente de
-  `/var/lib/sesame/sauvegardes` avec le compte de secours.
+- **Revenir en arrière** : restaurez les fichiers de la sauvegarde la plus récente de `/var/lib/sesame/sauvegardes`.
 
 ## Structure du dépôt
 
 ```
 bin/                  sesame (ligne de commande), sesame-assistant (assistant graphique)
 libexec/sesame-racine assistant root lancé par pkexec
-sesame/               cœur Python : config, étapes, vérification, guide, racine, cli
+sesame/               cœur Python : config, étapes, himmelblau, compilation, vérification, racine, cli
 sesame/interface/     assistant graphique GTK 4 + libadwaita
-data/                 polkit, systemd, bureau, metainfo, icônes, source et clé APT
+data/                 polkit, bureau, metainfo, icônes, source et clé APT
 debian/               paquet Debian
 man/                  sesame(8), sesame-assistant(1)
 scripts/              build-deb.sh, publier-apt.sh, capture-interface.py
@@ -259,8 +205,10 @@ make apt     # publie dist/*.deb dans le dépôt APT signé (branche gh-pages) e
 
 Sur un poste partagé avec Gagarine, les travaux lourds passent par sa file :
 `gagarine file "sesame-tests" 2 2 -- make test`. Le cœur est testé sur une racine temporaire, avec des commandes
-simulées ; rien ne touche au poste. Conception : [`docs/conception-1.1.0.md`](docs/conception-1.1.0.md) (connexion par
-mot de passe) et [`docs/conception-1.0.0.md`](docs/conception-1.0.0.md).
+simulées ; rien ne touche au poste, aucun accès réseau. Conception :
+[`docs/conception-2.0.0.md`](docs/conception-2.0.0.md) (Himmelblau),
+[`docs/conception-1.1.0.md`](docs/conception-1.1.0.md) et [`docs/conception-1.0.0.md`](docs/conception-1.0.0.md)
+(authd, abandonné).
 
 ## Licence
 

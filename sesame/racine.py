@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 
-from . import actions, config as cfg, etapes, reprise
+from . import actions, config as cfg, etapes
 from .systeme import ErreurSesame, Systeme
 from .version import VERSION
 
@@ -27,7 +27,8 @@ class Emetteur:
         if self.en_json:
             self._ligne({"type": type_, "texte": texte})
         else:
-            prefixe = {"etape": "== ", "commande": "$ ", "sortie": "   ", "avertissement": "Attention : "}[type_]
+            prefixe = {"etape": "== ", "commande": "$ ", "sortie": "   ", "avertissement": "Attention : ",
+                       "compilation_requise": "Compilation requise : "}[type_]
             print(prefixe + texte, file=self.sortie, flush=True)
 
     def fin(self, ok, message):
@@ -44,49 +45,36 @@ def analyseur():
     p = Analyseur(prog="sesame-racine", description="Assistant root de Sésame.")
     p.add_argument("--json", action="store_true", help="un événement JSON par ligne")
     sous = p.add_subparsers(dest="action", required=True, parser_class=Analyseur)
+    r = sous.add_parser("rejoindre")
+    r.add_argument("--compte", required=True)
+    r.add_argument("--nom-machine", required=True)
+    r.add_argument("--compte-local")
+    r.add_argument("--paquets")
     sous.add_parser("sauvegarde").add_argument("--motif", default="")
     sous.add_parser("secours").add_argument("--nom", default="secours")
-    sous.add_parser("quitter-ad")
-    sous.add_parser("installer")
+    sous.add_parser("nom-machine").add_argument("--nom", required=True)
     c = sous.add_parser("configurer")
-    c.add_argument("--locataire", required=True)
-    c.add_argument("--client", required=True)
     c.add_argument("--compte", required=True)
     c.add_argument("--compte-local")
-    c.add_argument("--secours")
-    c.add_argument("--groupes")
-    c.add_argument("--connexion", choices=cfg.CONNEXIONS)
-    r = sous.add_parser("reprise")
-    mode = r.add_mutually_exclusive_group(required=True)
-    for nom in ("maintenant", "au-demarrage", "annuler-programmation", "execution-demarrage"):
-        mode.add_argument("--" + nom, action="store_const", const=nom, dest="mode")
-    for nom in ("annuler-reprise", "desactiver", "noter-verification", "etat"):
+    sous.add_parser("installer").add_argument("--paquets", required=True)
+    for nom in ("quitter-ad", "outils", "noter-premiere-connexion", "desactiver", "etat"):
         sous.add_parser(nom)
     return p
 
 
-def _lire_mot_de_passe(entree):
-    ligne = entree.readline()
-    return ligne.rstrip("\r\n") or None
+def _lire_ligne(entree):
+    """Première ligne de l'entrée standard (mot de passe), sans fin de ligne ; None si elle est vide."""
+    return entree.readline().rstrip("\r\n") or None
+
+
+def _rejoindre(systeme, args, entree):
+    return True, actions.rejoindre(systeme, args.compte, args.nom_machine, args.compte_local, args.paquets)
 
 
 def _secours(systeme, args, entree):
-    return True, actions.creer_secours(systeme, args.nom, _lire_mot_de_passe(entree))
-
-
-def _configurer(systeme, args, entree):
-    groupes = cfg.decouper_groupes(args.groupes) if args.groupes is not None else None
-    c = actions.construire_config(systeme, args.locataire, args.client, args.compte, args.compte_local,
-                                  args.secours, groupes, args.connexion)
-    return True, actions.configurer(systeme, c)
-
-
-def _reprise(systeme, args, entree):
-    if args.mode == "annuler-programmation":
-        return True, reprise.annuler_programmation(systeme)
-    if args.mode == "execution-demarrage":
-        return reprise.executer_demarrage(systeme)
-    return actions.reprendre(systeme, args.mode)
+    mot_de_passe = _lire_ligne(entree)
+    copier_de = None if mot_de_passe else actions.compte_local_appelant(systeme) or cfg.defauts(systeme).compte_local
+    return True, actions.creer_secours(systeme, args.nom, mot_de_passe, copier_de)
 
 
 def _etat(systeme, args, entree):
@@ -97,15 +85,16 @@ def _etat(systeme, args, entree):
 
 
 ACTIONS = {
+    "rejoindre": _rejoindre,
     "sauvegarde": lambda s, a, e: (True, actions.faire_sauvegarde(s, a.motif)),
     "secours": _secours,
+    "nom-machine": lambda s, a, e: (True, actions.changer_nom_machine(s, a.nom)),
     "quitter-ad": lambda s, a, e: (True, actions.quitter_ad(s)),
-    "installer": lambda s, a, e: (True, actions.installer(s)),
-    "configurer": _configurer,
-    "reprise": _reprise,
-    "annuler-reprise": lambda s, a, e: reprise.annuler(s),
+    "outils": lambda s, a, e: (True, actions.installer_outils(s)),
+    "installer": lambda s, a, e: (True, actions.installer(s, a.paquets)),
+    "configurer": lambda s, a, e: (True, actions.configurer(s, a.compte, a.compte_local)),
+    "noter-premiere-connexion": lambda s, a, e: (True, actions.noter_premiere_connexion(s)),
     "desactiver": lambda s, a, e: (True, actions.desactiver(s)),
-    "noter-verification": lambda s, a, e: (True, actions.noter_verification(s)),
     "etat": _etat,
 }
 
@@ -133,8 +122,7 @@ def main(argv=None, systeme=None, sortie=None, erreur=None, entree=None):
     except Exception as e:  # la ligne « fin » doit toujours exister
         ok, message = False, f"Erreur inattendue : {e!r}"
     emetteur.fin(ok, message)
-    au_demarrage = args.action == "reprise" and args.mode == "execution-demarrage"
-    return 0 if ok or au_demarrage else 1  # un échec ne doit jamais bloquer le démarrage
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":

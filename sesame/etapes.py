@@ -1,7 +1,7 @@
 """Les huit étapes de Sésame et leur détection (sans root, sans jamais planter)."""
 from dataclasses import dataclass
 
-from . import chemins, config as cfg, etat, nsswitch
+from . import chemins, config as cfg, etat, himmelblau, nsswitch
 from .version import VERSION
 
 A_FAIRE, FAIT, SANS_OBJET, PROGRAMMEE, BLOQUEE, INCONNU = (
@@ -21,40 +21,44 @@ ETAPES = [
           "Copie les fichiers de comptes et de connexion (/etc/passwd, PAM, GDM…) dans un dossier protégé. "
           "Rien n'est modifié : c'est le filet de sécurité des étapes suivantes.", "sauvegarde"),
     Etape("secours", "Créer le compte de secours",
-          "Crée un compte local administrateur pour dépanner le poste si la connexion Entra ne fonctionne pas. "
-          "Notez son mot de passe en lieu sûr.", "secours"),
+          "Crée un compte local administrateur, avec votre mot de passe Ubuntu actuel, pour dépanner le poste "
+          "si la connexion Entra ne fonctionne pas.", "secours"),
+    Etape("nom_machine", "Nommer la machine",
+          "Donne au poste le nom sous lequel il sera inscrit dans Entra (15 caractères au plus : lettres, "
+          "chiffres et tirets).", "nom-machine"),
     Etape("quitter_ad", "Quitter le domaine Active Directory",
           "Retire le poste de l'ancien domaine (sur ce poste seulement) et arrête SSSD, qui donnerait un compte "
           "de même nom que le compte Entra.", "quitter-ad"),
-    Etape("installer", "Installer authd et le module Entra",
-          "Installe authd (le service de connexion de Canonical) et le module Microsoft Entra ID. "
-          "Demande Ubuntu 24.04 ou plus récent et une connexion Internet.", "installer"),
-    Etape("configurer", "Configurer la connexion Entra",
-          "Indique à authd votre annuaire et votre application Entra. Vous seul pourrez vous connecter par Entra "
-          "sur ce poste.", "configurer"),
-    Etape("premiere_connexion", "Première connexion par Entra",
-          "Ouvrez une session par Entra une première fois : « Non listé ? », votre adresse pro, Microsoft Entra ID, "
-          "puis votre mot de passe Entra et la validation sur le téléphone, comme sur Windows.", None),
-    Etape("reprise", "Reprendre le compte local",
-          "Le compte Entra prend l'UID, le dossier personnel, les groupes et la crontab du compte local. "
-          "De préférence au prochain démarrage, quand aucune session n'est ouverte.", "reprise"),
-    Etape("verification", "Vérifier",
-          "Contrôle que tout est en place : compte, dossier, groupes, crontab et services. "
-          "À faire connecté avec le compte Entra.", None),
+    Etape("outils", "Installer les outils de compilation",
+          "Installe podman, git et make, qui servent à compiler Himmelblau sur ce poste (gratuit, sans abonnement), "
+          "et réserve à votre compte la plage d'identifiants dont podman a besoin.", "outils"),
+    Etape("compiler", "Compiler Himmelblau",
+          "Télécharge et compile Himmelblau (version stable-4.x) dans un conteneur, sous votre compte. "
+          "C'est long (de 20 minutes à plus d'une heure) et demande de la mémoire : le poste reste utilisable.", None),
+    Etape("installer", "Installer Himmelblau",
+          "Installe les paquets Himmelblau compilés : le service qui connecte Ubuntu à Microsoft Entra ID comme le "
+          "fait Windows, sans application à créer. Demande Ubuntu 24.04 ou plus récent.", "installer"),
+    Etape("configurer", "Relier votre compte à Entra",
+          "Relie votre compte local à votre adresse pro : vous gardez votre dossier et vos réglages, et vous vous "
+          "connectez avec le mot de passe Entra.", "configurer"),
+    Etape("premiere_connexion", "Première connexion",
+          "Déconnectez-vous, choisissez votre compte à l'écran d'accueil, tapez le mot de passe Entra et validez "
+          "sur le téléphone. Le poste est inscrit dans Entra à cette première connexion, puis vous choisissez un "
+          "code PIN (Windows Hello).", None),
 ]
 
 # Étapes à satisfaire (faites ou sans objet) avant de pouvoir lancer l'étape.
 PREREQUIS = {
     "secours": ["sauvegarde"],
+    "nom_machine": ["sauvegarde"],
     "quitter_ad": ["sauvegarde", "secours"],
-    "installer": ["sauvegarde", "quitter_ad"],
-    "configurer": ["installer"],
+    "outils": ["sauvegarde"],
+    "compiler": ["outils"],
+    "installer": ["compiler", "quitter_ad"],
+    "configurer": ["installer", "secours"],
     "premiere_connexion": ["configurer"],
-    "reprise": ["secours", "premiere_connexion"],
-    "verification": ["reprise"],
 }
 TITRES = {e.id: e.titre for e in ETAPES}
-NOMS_CONNEXION = {cfg.MOT_DE_PASSE: "mot de passe", cfg.CODE: "code sur le téléphone"}
 
 
 def _config(systeme):
@@ -92,81 +96,92 @@ def _quitter_ad(systeme, c):
     return SANS_OBJET, "Le poste n'est dans aucun domaine."
 
 
+def _nom_machine(systeme, c):
+    actuel = (systeme.lire(chemins.HOSTNAME).split() or [""])[0].split(".")[0]
+    if c.nom_machine and actuel == c.nom_machine:
+        return FAIT, f"La machine s'appelle {actuel}."
+    if c.nom_machine:
+        return A_FAIRE, f"Le nom choisi est {c.nom_machine}, la machine s'appelle {actuel or '?'}."
+    return A_FAIRE, f"La machine s'appelle {actuel or '?'} : choisissez le nom qu'elle aura dans Entra."
+
+
+def _outils(systeme, c):
+    manque = []
+    for nom in himmelblau.OUTILS:
+        r = systeme.lancer(["dpkg-query", "-W", "-f=${db:Status-Abbrev}", nom])
+        if not (r.ok and r.sortie.strip().startswith("ii")):
+            manque.append(nom)
+    if manque:
+        return A_FAIRE, "Manque : " + ", ".join(manque) + "."
+    return FAIT, "Les outils de compilation sont installés."
+
+
+def paquets_manquants(systeme):
+    """Paquets Himmelblau obligatoires qui ne sont pas installés."""
+    manque = []
+    for nom in himmelblau.PAQUETS:
+        r = systeme.lancer(["dpkg-query", "-W", "-f=${db:Status-Abbrev}", nom])
+        if not (r.ok and r.sortie.strip().startswith("ii")):
+            manque.append(nom)
+    return manque
+
+
+def _compiler(systeme, c):
+    if not paquets_manquants(systeme):
+        return FAIT, "Himmelblau est déjà installé : rien à compiler."
+    if c.dossier_compilation:
+        info = systeme.lire_json(f"{c.dossier_compilation}/packaging/sesame-compilation.json", {})
+        entrees = info.get("paquets") if isinstance(info, dict) else None
+        if isinstance(entrees, dict):
+            entrees = list(entrees) + list(entrees.values())
+        if isinstance(entrees, list) and all(p in himmelblau.debs_dans([str(e) for e in entrees])
+                                            for p in himmelblau.PAQUETS):
+            return FAIT, f"Himmelblau est compilé ({c.dossier_compilation}/packaging)."
+    return A_FAIRE, "Himmelblau n'est pas encore compilé."
+
+
 def _installer(systeme, c):
-    version = _version_ubuntu(systeme)
+    version = version_ubuntu(systeme)
     if version and version < (24, 4):
         return BLOQUEE, f"Ubuntu {version[0]}.{version[1]:02d} est trop ancien : il faut Ubuntu 24.04 ou plus récent."
-    paquet = systeme.lancer(["dpkg-query", "-W", "-f=${db:Status-Abbrev}", "authd"])
-    snap = systeme.lancer(["snap", "list", "authd-msentraid"])
-    manque = []
-    if not (paquet.ok and paquet.sortie.strip().startswith("ii")):
-        manque.append("le paquet authd")
-    if not snap.ok:
-        manque.append("le module authd-msentraid")
+    manque = paquets_manquants(systeme)
     if manque:
-        return A_FAIRE, "Manque : " + " et ".join(manque) + "."
-    versions = cfg.versions_installees(systeme)
-    installes = (f"authd {cfg.texte_version(versions['authd'])} et le module Entra "
-                 f"{cfg.texte_version(versions['module'])} sont installés.")
-    trop = cfg.trop_anciens(versions) if c.connexion == cfg.MOT_DE_PASSE else ""
-    if trop:
-        return FAIT, (f"{installes} Trop ancien pour la connexion par mot de passe : {trop}. "
-                      "Relancez cette étape pour mettre à jour.")
-    return FAIT, installes
+        return A_FAIRE, "Manque : " + ", ".join(manque) + "."
+    r = systeme.lancer(["dpkg-query", "-W", "-f=${Version}", "himmelblau"])
+    return FAIT, f"Himmelblau {r.sortie.strip() if r.ok else '?'} est installé."
 
 
 def _configurer(systeme, c):
     manque = []
-    if not systeme.existe(chemins.BROKER_AUTHD):
-        manque.append("le module n'est pas déclaré à authd")
-    enregistre = cfg.charger(systeme)
-    if not (enregistre and cfg.valider_guid(enregistre.locataire) and cfg.valider_guid(enregistre.client)):
-        manque.append("sesame.conf n'a pas de locataire et de client valides")
-    if not systeme.service_actif(chemins.SERVICE_BROKER):
-        manque.append("le service du module n'est pas actif")
-    note = etat.lire(systeme).get("configurer")
-    if not manque and isinstance(note, dict) and note.get("connexion", cfg.CODE) != enregistre.connexion:
-        manque.append(f"le mode de connexion a changé ({NOMS_CONNEXION.get(note.get('connexion', cfg.CODE), '?')} → "
-                      f"{NOMS_CONNEXION[enregistre.connexion]}) : relancez cette étape")
-    return (A_FAIRE, "À faire : " + " ; ".join(manque) + ".") if manque else (FAIT, "La connexion Entra est configurée.")
+    texte = systeme.lire(himmelblau.CONFIG)
+    if not (himmelblau.lire_config(texte, "domain") and himmelblau.lire_config(texte, "user_map_file")):
+        manque.append("himmelblau.conf n'a pas de domaine ni de user-map")
+    liens = himmelblau.lire_user_map(systeme.lire(himmelblau.USER_MAP))
+    if not c.compte_local or c.compte_local not in liens:
+        manque.append("aucun compte local n'est relié à une adresse Entra (user-map)")
+    if not systeme.service_actif("himmelblaud"):
+        manque.append("le service himmelblaud n'est pas actif")
+    if manque:
+        return A_FAIRE, "À faire : " + " ; ".join(manque) + "."
+    return FAIT, f"{c.compte_local} est relié à {liens[c.compte_local]}."
 
 
 def _premiere_connexion(systeme, c):
-    if not c.compte:
-        return A_FAIRE, "Le compte Entra n'est pas encore renseigné."
-    if c.compte in systeme.comptes_locaux():
-        return A_FAIRE, f"{c.compte} est un compte local, pas un compte authd."
-    if "authd" not in nsswitch.service_de(systeme.lire(chemins.NSSWITCH), "passwd"):
-        return A_FAIRE, "authd n'est pas encore consulté pour trouver les comptes (nsswitch.conf)."
-    if systeme.utilisateur(c.compte) is not None:
-        return FAIT, f"{c.compte} est connu d'authd."
-    return A_FAIRE, f"{c.compte} ne s'est pas encore connecté par Entra."
+    note = etat.lire(systeme).get("premiere_connexion")
+    if note:
+        return FAIT, f"Première connexion notée : {note.get('date', '?') if isinstance(note, dict) else '?'}"
+    adresse = c.compte or "votre adresse pro"
+    return A_FAIRE, (f"Déconnectez-vous, choisissez votre compte à l'écran d'accueil, tapez le mot de passe Entra "
+                     f"de {adresse} et validez sur le téléphone.")
 
 
-def _reprise(systeme, c):
-    n = systeme.utilisateur(c.compte) if c.compte else None
-    if n and n.uid == c.uid and n.dossier == c.dossier and c.compte_local not in systeme.comptes_locaux():
-        return FAIT, f"{c.compte} a repris le compte {c.compte_local} (UID {c.uid})."
-    if systeme.existe(chemins.REPRISE_PROGRAMMEE):
-        return PROGRAMMEE, "La reprise aura lieu au prochain démarrage."
-    if systeme.existe(chemins.REPRISE_ETAT):
-        return A_FAIRE, "Une reprise interrompue est en cours : « sesame annuler-reprise »."
-    return A_FAIRE, f"{c.compte or 'Le compte Entra'} peut reprendre {c.compte_local or 'le compte local'}."
+DETECTIONS = {"sauvegarde": _sauvegarde, "secours": _secours, "nom_machine": _nom_machine,
+              "quitter_ad": _quitter_ad, "outils": _outils, "compiler": _compiler,
+              "installer": _installer, "configurer": _configurer,
+              "premiere_connexion": _premiere_connexion}
 
 
-def _verification(systeme, c):
-    verif = etat.lire(systeme).get("verification")
-    if verif:
-        return FAIT, f"Vérification réussie : {verif.get('date', '?')}"
-    return A_FAIRE, "Pas encore vérifié."
-
-
-DETECTIONS = {"sauvegarde": _sauvegarde, "secours": _secours, "quitter_ad": _quitter_ad, "installer": _installer,
-              "configurer": _configurer, "premiere_connexion": _premiere_connexion, "reprise": _reprise,
-              "verification": _verification}
-
-
-def _version_ubuntu(systeme):
+def version_ubuntu(systeme):
     """(majeur, mineur) d'après /etc/os-release, ou None."""
     for ligne in systeme.lire("/etc/os-release").splitlines():
         if ligne.startswith("VERSION_ID="):
@@ -219,13 +234,7 @@ def etape_suivante(etats):
     return None
 
 
-def derniere_reprise(systeme):
-    """Résultat de la dernière reprise (derniere-reprise.json), ou None."""
-    return systeme.lire_json(chemins.DERNIERE_REPRISE)
-
-
 def etat_complet(systeme):
     """Ce que renvoie `sesame etat --json`."""
     etats = lire_etat(systeme)
-    return {"version": VERSION, "etapes": etats, "suivante": etape_suivante(etats),
-            "derniere_reprise": derniere_reprise(systeme)}
+    return {"version": VERSION, "etapes": etats, "suivante": etape_suivante(etats)}

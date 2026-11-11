@@ -41,12 +41,12 @@ class Application(Adw.Application):
         try:
             version = donnees.charger_coeur().version.VERSION
         except ImportError:
-            version = '1.0.0'
+            version = '2.0.0'
         d = Adw.AboutDialog(application_name='Sésame', application_icon=donnees.APPLICATION_ID, version=version,
                             developer_name='mawena', developers=['mawena'], copyright='© 2026 mawena',
                             license_type=Gtk.License.MIT_X11, website=donnees.SITE, issue_url=donnees.DEPOT + '/issues',
-                            comments='Connecte le poste à Microsoft Entra ID par authd, et fait reprendre au compte '
-                                     'Entra le compte local existant.')
+                            comments='Relie le poste Ubuntu à Microsoft Entra ID avec Himmelblau, comme un PC Windows : '
+                                     'votre compte local devient votre compte Entra.')
         d.present(self.fenetre)
 
 

@@ -1,86 +1,73 @@
 """Contrôles de vérification, sans root."""
-import os
-
-from sesame import chemins, etat, reprise, verification
-from tests.commun import A, N, U, H, Base
+from sesame import chemins, himmelblau, verification
+from tests.commun import A, N, NOM, Base
 
 
 class TestVerification(Base):
     def setUp(self):
         super().setUp()
         self.peupler()
+        self.installer_himmelblau()
+        self.ecrire("/etc/hostname", NOM + "\n")
         self.c = self.config()
-        self.m.actifs.add(chemins.SERVICE_BROKER)
-
-    def apres_reprise(self):
-        self.m.env["PKEXEC_UID"] = "1001"
-        self.assertTrue(reprise.reprendre(self.m, self.parametres(), "maintenant")[0])
-        self.ecrire("/etc/group", f"sudo:x:27:secours,{N}\ndocker:x:999:{N}\n")
 
     def resultats(self):
         return dict((t, ok) for ok, t in verification.controler(self.m, self.c))
 
     def test_pas_configure(self):
-        self.assertEqual(verification.controler(self.m, None)[0][0], False)
+        res = verification.controler(self.m, None)
+        self.assertEqual(res, [(False, "Sésame n'est pas encore configuré")])
 
-    def test_hors_session_entra_ne_controle_que_la_configuration(self):
-        self.apres_reprise()
+    def test_tout_est_en_place(self):
         res = verification.controler(self.m, self.c)
-        self.assertIn("pas connecté", res[0][1])
         self.assertTrue(all(ok for ok, _ in res), res)
-        self.assertFalse(any("$HOME" in t for _, t in res))
-        self.assertFalse(verification.est_connecte(self.m, self.c))
+        textes = " | ".join(t for _, t in res)
+        for attendu in ("himmelblaud", "pour passwd", "pour group", "pam_himmelblau", "user-map", "aad-tool",
+                        NOM, "secours"):
+            self.assertIn(attendu, textes)
 
-    def test_ancien_compte_encore_la(self):
+    def test_service_arrete(self):
+        self.m.actifs.discard("himmelblaud")
         res = self.resultats()
-        self.assertFalse(res[f"L'ancien compte {A} n'existe plus"])
+        self.assertFalse(res["Le service himmelblaud est actif"])
+        self.assertFalse(res["aad-tool status répond"])
 
-    def test_services_inactifs(self):
-        self.apres_reprise()
-        self.m.actifs.discard("authd")
+    def test_nss_manquant(self):
+        self.ecrire(chemins.NSSWITCH, "passwd: files himmelblau\ngroup: files\n")
         res = self.resultats()
-        self.assertFalse(res["Le service authd est actif"])
-        self.assertTrue(res["Le service du module Entra est actif"])
+        self.assertTrue(res["nsswitch.conf consulte himmelblau pour passwd"])
+        self.assertFalse(res["nsswitch.conf consulte himmelblau pour group"])
 
-    def test_compte_de_secours(self):
-        self.apres_reprise()
-        self.ecrire("/etc/group", f"sudo:x:27:{N}\ndocker:x:999:{N}\n")
-        self.assertFalse(self.resultats()["Le compte de secours secours existe et est administrateur"])
+    def test_pam_manquant(self):
+        self.ecrire(chemins.PAM_COMMON_AUTH, "auth pam_unix.so\n")
+        self.assertFalse(self.resultats()["PAM utilise pam_himmelblau (common-auth)"])
 
-    def test_groupes_manquants(self):
-        self.apres_reprise()
-        self.ecrire("/etc/group", f"sudo:x:27:secours\ndocker:x:999:{N}\n")
-        res = self.resultats()
-        self.assertFalse(res[f"{N} fait partie du groupe sudo"])
-        self.assertTrue(res[f"{N} fait partie du groupe docker"])
+    def test_user_map(self):
+        self.ecrire(himmelblau.USER_MAP, "autre:x@y.com\n")
+        self.assertFalse(self.resultats()[f"user-map : {A} est relié à {N}"])
+        self.ecrire(himmelblau.USER_MAP, f"{A}:{N.upper()}\n")  # casse ignorée
+        self.assertTrue(self.resultats()[f"user-map : {A} est relié à {N}"])
 
-    def test_unite_modifiee_inactive(self):
-        self.apres_reprise()
-        self.m.actifs.discard("app.service")
-        self.assertFalse(self.resultats()["L'unité app.service est active"])
-        self.m.actives.discard("app.service")
-        self.assertNotIn("L'unité app.service est active", self.resultats())
+    def test_aad_tool_absent_n_est_pas_controle(self):
+        self.m.aad_present = False
+        self.assertFalse(any("aad-tool" in t for t in self.resultats()))
 
-    def test_crontab(self):
-        self.apres_reprise()
-        self.m.uid, self.m.env["HOME"] = U, H
-        self.assertTrue(self.resultats()["Une crontab existe, comme avant la reprise"])
-        self.m.crontabs.clear()
-        self.assertFalse(self.resultats()["Une crontab existe, comme avant la reprise"])
+    def test_nom_de_la_machine(self):
+        self.ecrire("/etc/hostname", "ubuntu-pc\n")
+        res = [(ok, t) for ok, t in verification.controler(self.m, self.c) if "nom de la machine" in t]
+        self.assertFalse(res[0][0])
+        self.assertIn("ubuntu-pc", res[0][1])
 
-    def test_session_du_compte_entra(self):
-        self.apres_reprise()
-        self.m.uid = U
-        self.m.env["HOME"] = H
-        # getent de l'UID 1000 renvoie maintenant le compte Entra
+    def test_secours(self):
+        self.ecrire("/etc/group", self.lire("/etc/group").replace(",secours", ""))
+        self.assertFalse([ok for ok, t in verification.controler(self.m, self.c) if "secours" in t][0])
+
+    def test_ne_modifie_rien(self):
+        verification.controler(self.m, self.c)
+        self.assertEqual(self.m.modifiantes(), [])
+
+    def test_est_connecte(self):
+        self.m.uid = 1000
         self.assertTrue(verification.est_connecte(self.m, self.c))
-        res = self.resultats()
-        self.assertTrue(res[f"Le compte Entra a l'UID {U} (actuel : {U})"])
-        self.assertTrue(res[f"$HOME vaut {H} (actuel : {H})"])
-        self.assertEqual(res[f"{H} appartient à l'UID {U}"], os.stat(self.m.chemin(H)).st_uid == U)
-
-    def test_session_mauvais_home(self):
-        self.apres_reprise()
-        self.m.uid = U
-        self.m.env["HOME"] = "/home/autre"
-        self.assertFalse(self.resultats()[f"$HOME vaut {H} (actuel : /home/autre)"])
+        self.m.uid = 1001
+        self.assertFalse(verification.est_connecte(self.m, self.c))

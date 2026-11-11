@@ -1,41 +1,26 @@
-"""Réglages de Sésame (/etc/sesame/sesame.conf), valeurs par défaut détectées et modèle de broker.conf."""
+"""Réglages de Sésame (/etc/sesame/sesame.conf), valeurs par défaut détectées et validation des saisies."""
 import configparser
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from . import chemins
 
-_GUID = re.compile(r"^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$")
 _UPN = re.compile(r"^[^@\s:/\;#]+@([A-Za-z0-9-]+\.)+[A-Za-z0-9-]{2,}$")
 _NOM = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
-
-# Mode de connexion : adresse et mot de passe Entra puis double authentification (comme sur Windows),
-# ou code d'appareil à saisir sur le téléphone (Sésame 1.0.0).
-MOT_DE_PASSE, CODE = "mot-de-passe", "code"
-CONNEXIONS = (MOT_DE_PASSE, CODE)
-# Versions qui savent se connecter par mot de passe Entra (authd 0.7.0, module Entra 0.5.0).
-VERSION_MIN_AUTHD = (0, 7, 0)
-VERSION_MIN_MODULE = (0, 5, 0)
+_NOM_MACHINE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9-]{0,13}[A-Za-z0-9])?\Z")
 
 
 @dataclass
 class Config:
     """Réglages d'une installation."""
-    locataire: str = ""
-    client: str = ""
     compte: str = ""
     compte_local: str = ""
     uid: int = 0
     gid: int = 0
     dossier: str = ""
     secours: str = "secours"
-    groupes: list = field(default_factory=list)
-    connexion: str = MOT_DE_PASSE
-
-
-def valider_guid(texte):
-    """Vrai si `texte` est un GUID (8-4-4-4-12 hexadécimal)."""
-    return bool(_GUID.match(texte or ""))
+    nom_machine: str = ""
+    dossier_compilation: str = ""
 
 
 def valider_upn(texte):
@@ -49,66 +34,32 @@ def normaliser_upn(texte):
 
 
 def valider_nom(texte):
-    """Vrai si `texte` est un nom de compte ou de groupe Unix acceptable."""
+    """Vrai si `texte` est un nom de compte Unix acceptable."""
     return bool(_NOM.match(texte or ""))
 
 
-def valider_connexion(texte):
-    """Vrai si `texte` est un mode de connexion connu (`mot-de-passe` ou `code`)."""
-    return texte in CONNEXIONS
-
-
-def version(texte):
-    """(majeur, mineur, correctif) au début d'un numéro de version (`0.7.1~ppa1` → (0, 7, 1)), ou None."""
-    m = re.match(r"\s*(\d+)\.(\d+)(?:\.(\d+))?", texte or "")
-    return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)) if m else None
-
-
-def texte_version(v):
-    return ".".join(str(n) for n in v) if v else "?"
-
-
-def versions_installees(systeme):
-    """{"authd": (0, 7, 1) ou None, "module": (0, 5, 0) ou None}, d'après dpkg et snap (sans root)."""
-    paquet = systeme.lancer(["dpkg-query", "-W", "-f=${Version}", "authd"])
-    snap = systeme.lancer(["snap", "list", "authd-msentraid"])
-    lignes = snap.sortie.splitlines() if snap.ok else []
-    colonnes = lignes[1].split() if len(lignes) > 1 else []
-    return {"authd": version(paquet.sortie) if paquet.ok else None,
-            "module": version(colonnes[1]) if len(colonnes) > 1 else None}
-
-
-def trop_anciens(versions):
-    """Ce qui est trop ancien pour la connexion par mot de passe Entra (texte), ou "" si tout convient."""
-    trop = []
-    for cle, nom, minimum in (("authd", "authd", VERSION_MIN_AUTHD), ("module", "le module Entra", VERSION_MIN_MODULE)):
-        if versions.get(cle) is None or versions[cle] < minimum:
-            trop.append(f"{nom} {texte_version(versions.get(cle))} (il faut {texte_version(minimum)})")
-    return " et ".join(trop)
-
-
-def decouper_groupes(texte):
-    """Liste de noms de groupes depuis `a,b, c`."""
-    return [g.strip() for g in (texte or "").split(",") if g.strip()]
+def valider_nom_machine(texte):
+    """Vrai si `texte` est un nom de machine acceptable (règle Windows) : 1 à 15 caractères, lettres, chiffres et
+    tirets, ni tiret au début ou à la fin, pas uniquement des chiffres."""
+    return bool(_NOM_MACHINE.match(texte or "")) and not texte.isdigit()
 
 
 def texte_conf(config):
     """Contenu de sesame.conf."""
     return (
-        "# Réglages de Sésame — écrit par l'étape « configurer ». Aucun secret ici.\n"
+        "# Réglages de Sésame — écrit par Sésame. Aucun secret ici.\n"
         "[entra]\n"
-        f"locataire = {config.locataire}\n"
-        f"client = {config.client}\n"
-        f"compte = {normaliser_upn(config.compte)}\n"
-        f"connexion = {config.connexion}\n\n"
+        f"compte = {normaliser_upn(config.compte)}\n\n"
         "[local]\n"
         f"compte = {config.compte_local}\n"
         f"uid = {config.uid}\n"
         f"gid = {config.gid}\n"
         f"dossier = {config.dossier}\n"
         f"secours = {config.secours}\n\n"
-        "[groupes]\n"
-        f"supplementaires = {','.join(config.groupes)}\n"
+        "[machine]\n"
+        f"nom = {config.nom_machine}\n\n"
+        "[compilation]\n"
+        f"dossier = {config.dossier_compilation}\n"
     )
 
 
@@ -117,7 +68,8 @@ def ecrire(systeme, config):
 
 
 def charger(systeme):
-    """Lit sesame.conf ; None s'il n'existe pas ou est illisible."""
+    """Lit sesame.conf (les clés inconnues, par exemple celles de la 1.x, sont ignorées) ; None s'il n'existe pas
+    ou est illisible."""
     texte = systeme.lire(chemins.SESAME_CONF, None)
     if texte is None:
         return None
@@ -134,12 +86,9 @@ def charger(systeme):
         v = val(section, cle)
         return int(v) if v.isdigit() else 0
 
-    connexion = val("entra", "connexion", MOT_DE_PASSE).lower()
-    return Config(val("entra", "locataire"), val("entra", "client"), val("entra", "compte").lower(),
-                  val("local", "compte"), entier("local", "uid"), entier("local", "gid"), val("local", "dossier"),
-                  val("local", "secours", "secours") or "secours",
-                  decouper_groupes(val("groupes", "supplementaires")),
-                  connexion if valider_connexion(connexion) else MOT_DE_PASSE)
+    return Config(val("entra", "compte").lower(), val("local", "compte"), entier("local", "uid"),
+                  entier("local", "gid"), val("local", "dossier"), val("local", "secours", "secours") or "secours",
+                  val("machine", "nom"), val("compilation", "dossier"))
 
 
 def _compte_appelant(systeme, locaux):
@@ -164,34 +113,7 @@ def defauts(systeme):
     compte = _compte_appelant(systeme, locaux)
     if compte:
         config.compte_local, config.uid, config.gid, config.dossier = compte.nom, compte.uid, compte.gid, compte.dossier
-        primaire = next((g.nom for g in systeme.groupes_locaux().values() if g.gid == compte.gid), "")
-        config.groupes = [g.nom for g in systeme.groupes_locaux().values()
-                          if compte.nom in g.membres and g.nom not in (compte.nom, primaire)]
         domaines = systeme.domaines()
         if domaines:
             config.compte = f"{compte.nom.replace('-', '.')}@{domaines[0]}".lower()
     return config
-
-
-def texte_broker(config):
-    """Contenu de /var/snap/authd-msentraid/current/broker.conf.
-
-    Mode mot de passe : le poste est inscrit dans Entra à la première connexion (register_device), ce qui permet
-    à authd de lire les groupes sans secret client ; le code d'appareil reste proposé en secours."""
-    mot_de_passe = "true" if config.connexion == MOT_DE_PASSE else "false"
-    return (
-        "# Module Microsoft Entra ID pour authd — écrit par Sésame. Original : broker.conf.origine\n"
-        "[oidc]\n"
-        f"issuer = https://login.microsoftonline.com/{config.locataire}/v2.0\n"
-        f"client_id = {config.client}\n\n"
-        "[users]\n"
-        "allowed_users = OWNER\n"
-        f"owner = {normaliser_upn(config.compte)}\n"
-        "home_base_dir = /home\n"
-        f"owner_extra_groups = {','.join(config.groupes)}\n\n"
-        "[msentraid]\n"
-        f"register_device = {mot_de_passe}\n\n"
-        "[flows]\n"
-        "device_code = true\n"
-        f"entra_auth = {mot_de_passe}\n"
-    )

@@ -1,123 +1,66 @@
-"""Réglages : validation, sesame.conf, valeurs par défaut, broker.conf."""
+"""Réglages : validations, écriture, lecture (dont sesame.conf de la 1.x) et valeurs détectées."""
 from sesame import chemins, config as cfg
-from tests.commun import A, CLIENT, H, LOCATAIRE, N, U, Base
+from tests.commun import A, DOSSIER_COMPIL, G, H, N, NOM, U, Base
 
 
-class TestValidation(Base):
-    def test_guid(self):
-        self.assertTrue(cfg.valider_guid(LOCATAIRE))
-        self.assertTrue(cfg.valider_guid("AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"))
-        for faux in ("", None, "1234", LOCATAIRE + "0", LOCATAIRE[:-1] + "g", " " + LOCATAIRE, LOCATAIRE.replace("-", "")):
-            self.assertFalse(cfg.valider_guid(faux), faux)
-
+class TestValidations(Base):
     def test_upn(self):
-        for bon in (N, "A.B@exemple.fr", "a_b-c@sous.domaine.org", " x@y.com "):
-            self.assertTrue(cfg.valider_upn(bon), bon)
-        for faux in ("", None, "sans-arobase", "a@b", "a b@c.com", "a@@c.com", "@c.com", "a@c.", "a;b@c.com"):
+        self.assertTrue(cfg.valider_upn(N))
+        self.assertTrue(cfg.valider_upn("  Prenom.Nom@Entreprise.COM "))
+        for faux in ("", None, "sans-arobase", "a@b", "a b@c.com", "a@@c.com"):
             self.assertFalse(cfg.valider_upn(faux), faux)
+        self.assertEqual(cfg.normaliser_upn("  A.B@X.Com "), "a.b@x.com")
 
-    def test_normaliser_upn(self):
-        self.assertEqual(cfg.normaliser_upn("  Charles.Gamligo@CofinaCorp.com "), N)
-
-    def test_valider_nom(self):
+    def test_nom_de_compte(self):
         self.assertTrue(cfg.valider_nom("secours"))
-        self.assertTrue(cfg.valider_nom("charles-gamligo"))
-        for faux in ("", "Majuscule", "a b", "1abc", "a;b", "x" * 40):
-            self.assertFalse(cfg.valider_nom(faux), faux)
+        self.assertFalse(cfg.valider_nom("Secours"))
+        self.assertFalse(cfg.valider_nom("1abc"))
+
+    def test_nom_de_machine(self):
+        for bon in ("PC", "pc-charles", "A1", "a" * 15, "Poste-42", "1a"):
+            self.assertTrue(cfg.valider_nom_machine(bon), bon)
+        for faux in ("", None, "-pc", "pc-", "a" * 16, "12345", "pc_1", "pc.local", "pc 1", "é", "pc\n"):
+            self.assertFalse(cfg.valider_nom_machine(faux), faux)
 
 
 class TestFichier(Base):
-    def test_ecrire_et_charger(self):
-        c = cfg.Config(LOCATAIRE, CLIENT, "Charles.Gamligo@Cofinacorp.com", A, U, U, H, "secours", ["sudo", "docker"])
+    def test_aller_retour(self):
+        c = cfg.Config(N, A, U, G, H, "secours", NOM, DOSSIER_COMPIL)
         cfg.ecrire(self.m, c)
-        texte = self.lire(chemins.SESAME_CONF)
-        for ligne in (f"locataire = {LOCATAIRE}", f"client = {CLIENT}", f"compte = {N}", f"compte = {A}", "uid = 1000",
-                      f"dossier = {H}", "secours = secours", "supplementaires = sudo,docker", "[entra]", "[local]",
-                      "[groupes]"):
-            self.assertIn(ligne, texte)
-        self.assertEqual(oct(self.m.chemin(chemins.SESAME_CONF).stat().st_mode & 0o777), "0o644")
-        charge = cfg.charger(self.m)
-        self.assertEqual(charge.compte, N)
-        self.assertEqual((charge.uid, charge.gid, charge.dossier), (U, U, H))
-        self.assertEqual(charge.groupes, ["sudo", "docker"])
+        self.assertEqual(cfg.charger(self.m), c)
+        self.assertNotIn("authd", self.lire(chemins.SESAME_CONF))
 
-    def test_charger_commentaires_en_fin_de_ligne(self):
-        self.ecrire(chemins.SESAME_CONF, f"[entra]\nlocataire = {LOCATAIRE}   ; ID\ncompte = X@Y.com\n[groupes]\n"
-                                         "supplementaires = a, b ,\n")
-        c = cfg.charger(self.m)
-        self.assertEqual(c.locataire, LOCATAIRE)
-        self.assertEqual(c.compte, "x@y.com")
-        self.assertEqual(c.groupes, ["a", "b"])
-        self.assertEqual(c.secours, "secours")
-
-    def test_charger_absent_ou_casse(self):
+    def test_absent_ou_illisible(self):
         self.assertIsNone(cfg.charger(self.m))
         self.ecrire(chemins.SESAME_CONF, "pas un ini")
         self.assertIsNone(cfg.charger(self.m))
 
+    def test_lit_un_sesame_conf_1x_en_ignorant_les_cles_inconnues(self):
+        self.ecrire(chemins.SESAME_CONF, f"""# Réglages de Sésame 1.1.0
+[entra]
+locataire = 11111111-2222-3333-4444-555555555555
+client = aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+compte = {N.upper()}
+connexion = mot-de-passe
 
-class TestBroker(Base):
-    def test_texte_broker(self):
-        c = cfg.Config(LOCATAIRE, CLIENT, N.upper(), A, U, U, H, "secours", ["sudo", "docker"])
-        self.assertEqual(cfg.texte_broker(c), (
-            "# Module Microsoft Entra ID pour authd — écrit par Sésame. Original : broker.conf.origine\n"
-            "[oidc]\n"
-            f"issuer = https://login.microsoftonline.com/{LOCATAIRE}/v2.0\n"
-            f"client_id = {CLIENT}\n\n"
-            "[users]\nallowed_users = OWNER\n"
-            f"owner = {N}\n"
-            "home_base_dir = /home\nowner_extra_groups = sudo,docker\n\n"
-            "[msentraid]\nregister_device = true\n\n"
-            "[flows]\ndevice_code = true\nentra_auth = true\n"))
+[local]
+compte = {A}
+uid = {U}
+gid = {G}
+dossier = {H}
+secours = secours
 
-    def test_texte_broker_code(self):
-        c = cfg.Config(LOCATAIRE, CLIENT, N, A, U, U, H, "secours", [], cfg.CODE)
-        self.assertTrue(cfg.texte_broker(c).endswith(
-            "[msentraid]\nregister_device = false\n\n[flows]\ndevice_code = true\nentra_auth = false\n"))
+[groupes]
+supplementaires = sudo,docker
+""")
+        c = cfg.charger(self.m)
+        self.assertEqual((c.compte, c.compte_local, c.uid, c.gid, c.dossier, c.secours, c.nom_machine, c.dossier_compilation),
+                         (N, A, U, G, H, "secours", "", ""))
 
-
-class TestConnexion(Base):
-    def test_valider(self):
-        self.assertEqual(cfg.Config().connexion, cfg.MOT_DE_PASSE)
-        for bon in ("mot-de-passe", "code"):
-            self.assertTrue(cfg.valider_connexion(bon))
-        for faux in ("", None, "Code", "windows"):
-            self.assertFalse(cfg.valider_connexion(faux), faux)
-
-    def test_sesame_conf(self):
-        c = cfg.Config(LOCATAIRE, CLIENT, N, A, U, U, H, "secours", [], cfg.CODE)
-        cfg.ecrire(self.m, c)
-        self.assertIn("connexion = code\n", self.lire(chemins.SESAME_CONF))
-        self.assertEqual(cfg.charger(self.m).connexion, cfg.CODE)
-
-    def test_sesame_conf_1_0_ou_valeur_inconnue(self):
-        for valeur in ("", "connexion = windows\n"):
-            self.ecrire(chemins.SESAME_CONF, f"[entra]\nlocataire = {LOCATAIRE}\n{valeur}")
-            self.assertEqual(cfg.charger(self.m).connexion, cfg.MOT_DE_PASSE, valeur)
-
-    def test_version(self):
-        self.assertEqual(cfg.version("0.7.1~24.04"), (0, 7, 1))
-        self.assertEqual(cfg.version("0.5.0+git3"), (0, 5, 0))
-        self.assertEqual(cfg.version("1.2"), (1, 2, 0))
-        for faux in ("", None, "v1", "abc"):
-            self.assertIsNone(cfg.version(faux), faux)
-        self.assertEqual(cfg.texte_version((0, 7, 0)), "0.7.0")
-        self.assertEqual(cfg.texte_version(None), "?")
-
-    def test_versions_installees(self):
-        self.m.paquets.add("authd")
-        self.m.snaps.add("authd-msentraid")
-        self.assertEqual(cfg.versions_installees(self.m), {"authd": (0, 7, 1), "module": (0, 5, 0)})
-        self.m.paquets.clear()
-        self.m.snaps.clear()
-        self.assertEqual(cfg.versions_installees(self.m), {"authd": None, "module": None})
-
-    def test_trop_anciens(self):
-        self.assertEqual(cfg.trop_anciens({"authd": (0, 7, 0), "module": (0, 5, 0)}), "")
-        self.assertEqual(cfg.trop_anciens({"authd": (1, 0, 0), "module": (0, 6, 2)}), "")
-        texte = cfg.trop_anciens({"authd": (0, 6, 3), "module": None})
-        self.assertIn("authd 0.6.3 (il faut 0.7.0)", texte)
-        self.assertIn("le module Entra ? (il faut 0.5.0)", texte)
+    def test_valeurs_manquantes(self):
+        self.ecrire(chemins.SESAME_CONF, "[local]\nuid = abc\n")
+        c = cfg.charger(self.m)
+        self.assertEqual((c.compte, c.uid, c.secours, c.nom_machine), ("", 0, "secours", ""))
 
 
 class TestDefauts(Base):
@@ -125,35 +68,16 @@ class TestDefauts(Base):
         super().setUp()
         self.peupler()
 
-    def test_compte_courant(self):
-        self.m.uid = U
+    def test_premier_compte_ordinaire(self):
         d = cfg.defauts(self.m)
-        self.assertEqual((d.compte_local, d.uid, d.gid, d.dossier), (A, U, U, H))
-        self.assertEqual(d.secours, "secours")
+        self.assertEqual((d.compte_local, d.uid, d.gid, d.dossier), (A, U, G, H))
+        self.assertEqual(d.compte, "")
 
-    def test_groupes_supplementaires_existants(self):
-        self.m.uid = U
-        d = cfg.defauts(self.m)
-        self.assertEqual(sorted(d.groupes), ["docker", "lpadmin", "sudo"])
-        self.assertNotIn(A, d.groupes)
+    def test_compte_de_l_appelant(self):
+        self.ecrire("/etc/passwd", self.lire("/etc/passwd") + "autre:x:1002:1002::/home/autre:/bin/bash\n")
+        self.m.env["PKEXEC_UID"] = "1002"
+        self.assertEqual(cfg.defauts(self.m).compte_local, "autre")
 
-    def test_pkexec_uid_et_sudo_user(self):
-        self.m.env["PKEXEC_UID"] = str(U)
-        self.assertEqual(cfg.defauts(self.m).compte_local, A)
-        self.m.env = {"SUDO_USER": A}
-        self.assertEqual(cfg.defauts(self.m).compte_local, A)
-
-    def test_repli_premier_compte_ordinaire(self):
-        d = cfg.defauts(self.m)  # l'UID 4242 n'existe pas
-        self.assertEqual(d.compte_local, A)  # root (UID 0) et secours (1001) : A a le plus petit UID >= 1000
-
-    def test_aucun_compte(self):
-        self.ecrire("/etc/passwd", "root:x:0:0::/root:/bin/bash\n")
-        self.assertEqual(cfg.defauts(self.m), cfg.Config())
-
-    def test_upn_suggere_avec_domaine(self):
-        self.m.domaines_joints = ["cofinacorp.com"]
+    def test_adresse_suggeree_depuis_le_domaine_ad(self):
+        self.m.domaines_joints = ["Cofinacorp.com"]
         self.assertEqual(cfg.defauts(self.m).compte, "charles.gamligo@cofinacorp.com")
-
-    def test_upn_vide_sans_domaine(self):
-        self.assertEqual(cfg.defauts(self.m).compte, "")

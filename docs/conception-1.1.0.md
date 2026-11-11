@@ -1,5 +1,7 @@
 # Sésame 1.1.0 — conception
 
+Suite : [conception-2.0.0.md](conception-2.0.0.md)
+
 Suite de [Sésame 1.0.0](conception-1.0.0.md). Tout ce que dit la conception 1.0.0 reste vrai, sauf ce qui est précisé
 ici.
 

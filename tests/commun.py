@@ -1,23 +1,22 @@
 """Machine simulée pour les tests : racine temporaire, commandes enregistrées et simulées (sans root, sans effet réel)."""
-import os
 import tempfile
 import unittest
-from pathlib import Path
 
-from sesame import config as cfg
+from sesame import config as cfg, himmelblau
 from sesame.systeme import Resultat, Systeme
 
 A, N = "charles-gamligo", "charles.gamligo@cofinacorp.com"
 U = G = 1000
-NU = NG = 60001
-H, NH = "/home/" + A, "/home/" + N
-LOCATAIRE = "11111111-2222-3333-4444-555555555555"
-CLIENT = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+H = "/home/" + A
+NOM = "PC-CHARLES"
+EMPREINTE = "$y$j9T$sel$empreinte-du-mot-de-passe-ubuntu"
+PAQUETS_DIR = "/home/charles-gamligo/.local/share/sesame/himmelblau/packaging"
+DOSSIER_COMPIL = PAQUETS_DIR.rsplit("/", 1)[0]
 DOC = "document important\n"
 
 
 class Machine(Systeme):
-    """Système simulé : comptes locaux dans la racine, comptes Entra et état des services en mémoire."""
+    """Système simulé : fichiers dans la racine temporaire, paquets et services en mémoire."""
 
     def __init__(self, racine, root=True):
         super().__init__(racine, env={})
@@ -25,29 +24,27 @@ class Machine(Systeme):
         self.uid = 4242
         self.appels = []
         self.forces = {}          # tuple(argv) -> Resultat
-        self.entra = {}           # nom -> {"uid", "gid", "home"}
         self.domaines_joints = []
-        self.paquets, self.snaps = set(), set()
-        self.versions = {"authd": "0.7.1~24.04", "authd-msentraid": "0.5.0"}   # versions installées
-        self.mises_a_jour = {}    # versions qu'apporteraient apt-get install et snap refresh
+        self.paquets = set()
+        self.versions = {"himmelblau": "4.0.1"}
         self.actifs, self.actives = set(), set()
         self.crontabs = {}
         self.mots_de_passe = {}
+        self.empreintes = {}      # comptes dont l'empreinte a été copiée par chpasswd -e
         self.panne_a = None       # indice (parmi les commandes qui modifient) de la commande qui échoue
         self.nb_modif = 0
         self.pannes = []
-        self.authctl = []         # un dict par appel : commande et dossier courant du compte Entra
-        self.authctl_cree_dossier = False
-        self.groupe_reste = False
-        self.authctl_present = True
         self.evenements = []
+        self.apparmor_echoue = False
+        self.aad_ok = True
+        self.aad_present = True
 
     # --- remplacements
     def est_root(self):
         return self.root
 
     def programme_present(self, nom):
-        return self.authctl_present if nom == "authctl" else True
+        return self.aad_present if nom == "aad-tool" else True
 
     def lancer(self, argv, entree=None, direct=None):
         argv = [str(a) for a in argv]
@@ -64,7 +61,7 @@ class Machine(Systeme):
 
     @staticmethod
     def _lecture(argv):
-        return (argv[0] in ("getent", "dpkg-query") or argv[:2] in (["realm", "list"], ["snap", "list"])
+        return (argv[0] in ("getent", "dpkg-query", "dpkg-deb") or argv[:2] in (["realm", "list"], ["aad-tool", "status"])
                 or (argv[0] == "systemctl" and argv[1].startswith("is-")) or (argv[0] == "crontab" and "-l" in argv))
 
     def modifiantes(self):
@@ -84,16 +81,10 @@ class Machine(Systeme):
             for u in self.comptes_locaux().values():
                 if cle in (u.nom, str(u.uid)):
                     return Resultat(0, f"{u.nom}:x:{u.uid}:{u.gid}::{u.dossier}:/bin/bash\n")
-            for nom, e in self.entra.items():
-                if cle in (nom, str(e["uid"])):
-                    return Resultat(0, f"{nom}:x:{e['uid']}:{e['gid']}::{e['home']}:/bin/bash\n")
         if base == "group":
             for g in self.groupes_locaux().values():
                 if cle in (g.nom, str(g.gid)):
                     return Resultat(0, f"{g.nom}:x:{g.gid}:{','.join(g.membres)}\n")
-            for nom, e in self.entra.items():
-                if cle in (nom, str(e["gid"])):
-                    return Resultat(0, f"{nom}:x:{e['gid']}:\n")
         return Resultat(2)
 
     def _realm(self, a, entree):
@@ -108,28 +99,25 @@ class Machine(Systeme):
             return Resultat(1, "", "pas installé")
         return Resultat(0, self.versions.get(a[-1], "1.0")) if "-f=${Version}" in a else Resultat(0, "ii ")
 
-    def _mettre_a_jour(self, nom):
-        if nom in self.mises_a_jour:
-            self.versions[nom] = self.mises_a_jour[nom]
-
-    def _snap(self, a, entree):
-        if a[0] == "install":
-            self.snaps.add(a[-1])
-            self._mettre_a_jour(a[-1])
-            return Resultat(0)
-        if a[-1] not in self.snaps:
-            return Resultat(1, "", "snap introuvable")
-        if a[0] == "refresh":
-            self._mettre_a_jour(a[-1])
-            return Resultat(0)
-        return Resultat(0, "Name             Version  Rev  Tracking       Publisher   Notes\n"
-                           f"{a[-1]}  {self.versions.get(a[-1], '1.0')}  42   latest/stable  canonical✓  -\n")
-
     def _apt_get(self, a, entree):
         if a[0] == "install":
-            for nom in (x for x in a[1:] if not x.startswith("-")):
-                self.paquets.add(nom)
-                self._mettre_a_jour(nom)
+            noms = []
+            for x in (x for x in a[1:] if not x.startswith("-")):
+                noms.append(x.rsplit("/", 1)[-1].split("_")[0] if x.endswith(".deb") else x)
+            if "himmelblau-apparmor" in noms and self.apparmor_echoue:
+                return Resultat(100, "", "E: himmelblau-apparmor introuvable")
+            self.paquets.update(noms)
+        return Resultat(0)
+
+    def _dpkg_deb(self, a, entree):
+        """dpkg-deb -f FICHIER Package : le fichier simulé contient le nom du paquet."""
+        if a[0] == "-f" and self.existe(a[1]):
+            return Resultat(0, self.lire(a[1]).strip() + "\n")
+        return Resultat(1, "", "dpkg-deb : fichier illisible")
+
+    def _hostnamectl(self, a, entree):
+        if a[0] == "hostname":
+            self.ecrire("/etc/hostname", a[1] + "\n")
         return Resultat(0)
 
     def _systemctl(self, a, entree):
@@ -137,11 +125,45 @@ class Machine(Systeme):
             return Resultat(0, "active\n") if a[1] in self.actifs else Resultat(3, "inactive\n")
         if a[0] == "is-enabled":
             return Resultat(0, "enabled\n") if a[1] in self.actives else Resultat(1, "disabled\n")
+        noms = [x for x in a[1:] if not x.startswith("-")]
+        if a[0] == "enable":
+            self.actives.update(noms)
+            if "--now" in a:
+                self.actifs.update(noms)
+        elif a[0] == "disable":
+            self.actives.difference_update(noms)
+            if "--now" in a:
+                self.actifs.difference_update(noms)
+        elif a[0] in ("start", "restart"):
+            self.actifs.update(noms)
+        elif a[0] == "stop":
+            self.actifs.difference_update(noms)
         return Resultat(0)
+
+    def _pam_auth_update(self, a, entree):
+        if a[:1] == ["--enable"]:
+            texte = self.lire("/etc/pam.d/common-auth")
+            if "pam_himmelblau" not in texte:
+                self.ecrire("/etc/pam.d/common-auth",
+                            "auth [success=end default=ignore] pam_himmelblau.so ignore_unknown_user set_authtok\n" + texte)
+        if a[:1] == ["--disable"]:
+            self.ecrire("/etc/pam.d/common-auth", "\n".join(
+                l for l in self.lire("/etc/pam.d/common-auth").splitlines() if a[1] not in l and "pam_himmelblau" not in l
+            ) + "\n")
+        return Resultat(0)
+
+    def _aad_tool(self, a, entree):
+        ok = self.aad_ok and "himmelblaud" in self.actifs
+        return Resultat(0 if ok else 1, "working\n" if ok else "", "" if ok else "démon injoignable")
 
     def _chpasswd(self, a, entree):
         nom, mdp = entree.rstrip("\n").split(":", 1)
-        self.mots_de_passe[nom] = mdp
+        if "-e" in a:
+            self.empreintes[nom] = mdp
+            lignes = [l for l in self._lignes("/etc/shadow") if l.split(":")[0] != nom]
+            self.ecrire("/etc/shadow", "\n".join(lignes + [f"{nom}:{mdp}:19000:0:99999:7:::"]) + "\n", 0o640)
+        else:
+            self.mots_de_passe[nom] = mdp
         return Resultat(0)
 
     def _useradd(self, a, entree):
@@ -153,7 +175,11 @@ class Machine(Systeme):
         return Resultat(0)
 
     def _usermod(self, a, entree):
-        self._ajouter_a_groupe(a[2], a[-1])
+        if "--add-subuids" in a:
+            for f in ("/etc/subuid", "/etc/subgid"):
+                self.ecrire(f, self.lire(f) + f"{a[-1]}:100000:65536\n")
+        else:
+            self._ajouter_a_groupe(a[1], a[-1])
         return Resultat(0)
 
     def _ajouter_a_groupe(self, groupe, nom):
@@ -165,53 +191,10 @@ class Machine(Systeme):
             lignes.append(":".join(g))
         self.ecrire("/etc/group", "\n".join(lignes) + "\n")
 
-    def _userdel(self, a, entree):
-        nom = a[-1]
-        self.ecrire("/etc/passwd", "".join(l + "\n" for l in self._lignes("/etc/passwd") if l.split(":")[0] != nom))
-        lignes = []
-        for l in self._lignes("/etc/group"):
-            g = l.split(":")
-            if g[0] == nom and not self.groupe_reste:
-                continue
-            g[3] = ",".join(m for m in g[3].split(",") if m and m != nom)
-            lignes.append(":".join(g))
-        self.ecrire("/etc/group", "\n".join(lignes) + "\n")
-        return Resultat(0)
-
-    def _groupdel(self, a, entree):
-        self.ecrire("/etc/group", "".join(l + "\n" for l in self._lignes("/etc/group") if l.split(":")[0] != a[-1]))
-        return Resultat(0)
-
     def _crontab(self, a, entree):
-        compte = a[1] if a[0] == "-u" else next((n for n, e in self.entra.items() if e["uid"] == self.uid), "?")
+        compte = a[1] if a[0] == "-u" else "?"
         if "-l" in a:
             return Resultat(0, self.crontabs[compte]) if compte in self.crontabs else Resultat(1, "", "no crontab")
-        if "-r" in a:
-            return Resultat(0) if self.crontabs.pop(compte, None) is not None else Resultat(1)
-        self.crontabs[compte] = Path(a[2]).read_text()
-        self.ecrire(f"/var/spool/cron/crontabs/{compte}", self.crontabs[compte], 0o600)
-        return Resultat(0)
-
-    def _authctl(self, a, entree):
-        nom = a[2]
-        e = self.entra.get(nom)
-        if e is None:
-            return Resultat(1, "", "utilisateur inconnu")
-        self.authctl.append({"commande": a, "dossier_courant": e["home"],
-                             "courant_existe": self.chemin(e["home"]).exists()})
-        if a[:2] == ["user", "set-uid"]:
-            e["uid"] = int(a[3])
-        elif a[:2] == ["group", "set-gid"]:
-            e["gid"] = int(a[3])
-        elif a[:2] == ["user", "set-home"]:
-            ancien, nouveau = self.chemin(e["home"]), self.chemin(a[3])
-            if ancien.exists():  # comportement d'authctl : le contenu de l'ancien dossier suit
-                if nouveau.exists():
-                    return Resultat(1, "", "le dossier existe")
-                os.rename(ancien, nouveau)
-            elif self.authctl_cree_dossier:
-                nouveau.mkdir(parents=True)
-            e["home"] = a[3]
         return Resultat(0)
 
 
@@ -233,44 +216,52 @@ class Base(unittest.TestCase):
         return self.m.existe(chemin)
 
     def peupler(self, secours=True):
-        """Poste type : compte local A (avec dossier, crontab, unité, VMware…), compte Entra N déjà connu d'authd."""
+        """Poste vierge d'Ubuntu 24.04 : compte local A (dossier, crontab, mot de passe), pas de Himmelblau."""
         m = self.m
         self.ecrire("/etc/passwd", f"root:x:0:0::/root:/bin/bash\n{A}:x:{U}:{G}::{H}:/bin/bash\n"
-                                   + (f"secours:x:1001:1001::/home/secours:/bin/bash\n" if secours else ""))
+                                   + ("secours:x:1001:1001::/home/secours:/bin/bash\n" if secours else ""))
         self.ecrire("/etc/group", f"root:x:0:\nsudo:x:27:{A}" + (",secours" if secours else "")
-                    + f"\ndocker:x:999:{A}\nlpadmin:x:998:{A}\n{A}:x:{G}:\n")
-        self.ecrire("/etc/shadow", "root:*:1::::::\n", 0o640)
-        self.ecrire("/etc/subuid", f"{A}:100000:65536\nautre:200000:65536\n")
-        self.ecrire("/etc/subgid", f"{A}:100000:65536\n")
+                    + f"\ndocker:x:999:{A}\n{A}:x:{G}:\n")
+        self.ecrire("/etc/shadow", f"root:*:19000::::::\n{A}:{EMPREINTE}:19000:0:99999:7:::\n", 0o640)
         self.ecrire("/etc/nsswitch.conf", "passwd:         files systemd\ngroup:          files systemd\n"
                                           "shadow:         files\nhosts:          files dns\n")
+        self.ecrire("/etc/pam.d/common-auth", "auth\t[success=1 default=ignore]\tpam_unix.so nullok\n")
         self.ecrire("/etc/login.defs", "LOGIN_TIMEOUT\t\t60\n")
         self.ecrire("/etc/os-release", 'VERSION_ID="24.04"\n')
-        self.ecrire("/etc/gdm3/custom.conf", f"[daemon]\nAutomaticLogin={A}\nAutomaticLoginEnable=true\n")
-        self.ecrire("/etc/systemd/system/app.service", f"[Service]\nUser={A}\nGroup={A}\nExecStart=/bin/app\n")
-        self.ecrire("/etc/systemd/system/autre.service", "[Service]\nUser=root\n")
-        self.ecrire("/etc/vmware/hostd/authorization.xml", f"<a><ACEDataUser>{A}</ACEDataUser></a>\n")
-        self.ecrire(f"/var/lib/AccountsService/users/{A}", f"[User]\nIcon=/var/lib/AccountsService/icons/{A}\n")
-        self.ecrire(f"/var/lib/AccountsService/icons/{A}", "png")
+        self.ecrire("/etc/hostname", "ubuntu-pc\n")
+        self.ecrire("/etc/hosts", "127.0.0.1\tlocalhost\n127.0.1.1\tubuntu-pc\n::1\tip6-localhost\n")
         self.ecrire(f"{H}/doc.txt", DOC)
-        self.ecrire(f"{H}/.config/réglage", "x")
-        self.ecrire(f"{NH}/.profile", "vierge\n")
         self.ecrire(f"/var/spool/cron/crontabs/{A}", "0 2 * * * sauvegarde\n", 0o600)
         m.crontabs[A] = "0 2 * * * sauvegarde\n"
-        m.entra[N] = {"uid": NU, "gid": NG, "home": NH}
-        m.paquets.add("authd")
-        m.snaps.add("authd-msentraid")
-        m.actifs.update({"authd", "snap.authd-msentraid.authd-msentraid.service"})
-        m.actives.add("app.service")
-        m.actifs.add("app.service")
+
+    def installer_outils(self):
+        self.m.paquets.update(himmelblau.OUTILS)
+        self.ecrire("/etc/subuid", f"{A}:100000:65536\n")
+        self.ecrire("/etc/subgid", f"{A}:100000:65536\n")
+
+    def fabriquer_debs(self, dossier=PAQUETS_DIR, noms=None, version="4.0.1"):
+        """Dossier de .deb simulés (le contenu est le champ Package) ; renvoie le dossier."""
+        for nom in noms or himmelblau.PAQUETS:
+            self.ecrire(f"{dossier}/{nom}_{version}_amd64.deb", nom + "\n")
+        return dossier
+
+    def installer_himmelblau(self, lier=True, compte=N):
+        """État d'un poste où Himmelblau est installé (et relié à `compte` si `lier`)."""
+        m = self.m
+        m.paquets.update(himmelblau.PAQUETS)
+        self.ecrire("/etc/nsswitch.conf", "passwd:         files systemd himmelblau\ngroup:          files systemd "
+                                          "himmelblau\nshadow:         files\nhosts:          files dns\n")
+        self.ecrire("/etc/pam.d/common-auth", "auth\t[success=2 default=ignore]\tpam_himmelblau.so ignore_unknown_user\n"
+                                              "auth\t[success=1 default=ignore]\tpam_unix.so nullok\n")
+        if lier:
+            self.ecrire(himmelblau.CONFIG, himmelblau.texte_config("", himmelblau.domaine(compte), himmelblau.USER_MAP))
+            self.ecrire(himmelblau.USER_MAP, f"{A}:{compte}\n")
+            m.actifs.update(himmelblau.SERVICES)
+            m.actives.update(himmelblau.SERVICES)
 
     def config(self, **extra):
-        c = cfg.Config(LOCATAIRE, CLIENT, N, A, U, G, H, "secours", ["sudo", "docker"])
+        c = cfg.Config(N, A, U, G, H, "secours", NOM)
         for k, v in extra.items():
             setattr(c, k, v)
         cfg.ecrire(self.m, c)
         return c
-
-    def parametres(self):
-        from sesame.reprise import Parametres
-        return Parametres(A, N, U, G, H)

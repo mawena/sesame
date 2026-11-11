@@ -1,7 +1,9 @@
 """Détection de chaque statut de chaque étape."""
-from sesame import chemins, etapes, etat, reprise, sauvegarde
-from tests.commun import A, N, NU, U, H, Base
+import json
+
+from sesame import chemins, etapes, etat, himmelblau, sauvegarde
 from sesame.version import VERSION
+from tests.commun import A, DOSSIER_COMPIL, N, NOM, Base
 
 
 class BaseEtapes(Base):
@@ -35,6 +37,17 @@ class TestStatuts(BaseEtapes):
         self.peupler()
         self.assertEqual(self.statut("secours"), "fait")
 
+    def test_nom_machine(self):
+        statut, detail = self.detecte("nom_machine")
+        self.assertEqual(statut, "a_faire")
+        self.assertIn("ubuntu-pc", detail)
+        self.ecrire("/etc/hostname", NOM + "\n")
+        self.assertEqual(self.statut("nom_machine"), "fait")
+        self.ecrire("/etc/hostname", NOM + ".exemple.com\n")  # domaine ignoré
+        self.assertEqual(self.statut("nom_machine"), "fait")
+        self.c.nom_machine = ""  # sesame.conf sans nom
+        self.assertEqual(self.statut("nom_machine"), "a_faire")
+
     def test_quitter_ad(self):
         self.assertEqual(self.statut("quitter_ad"), "sans_objet")
         self.m.domaines_joints = ["cofinacorp.com"]
@@ -46,168 +59,139 @@ class TestStatuts(BaseEtapes):
         etat.noter(self.m, "quitter_ad", {"date": "x"})
         self.assertEqual(self.statut("quitter_ad"), "fait")
 
-    def test_installer(self):
-        self.m.snaps.clear()
-        self.assertEqual(self.statut("installer"), "a_faire")
-        self.assertIn("module", self.detecte("installer")[1])
-        self.m.snaps.add("authd-msentraid")
-        self.m.paquets.clear()
-        self.assertEqual(self.statut("installer"), "a_faire")
-        self.m.paquets.add("authd")
-        self.assertEqual(self.statut("installer"), "fait")
+    def test_outils(self):
+        statut, detail = self.detecte("outils")
+        self.assertEqual(statut, "a_faire")
+        self.assertIn("podman", detail)
+        self.m.paquets.update({"podman", "uidmap", "git"})
+        self.assertIn("make", self.detecte("outils")[1])
+        self.m.paquets.add("make")
+        self.assertEqual(self.statut("outils"), "fait")
 
-    def test_installer_versions(self):
+    def marque_compilation(self, paquets=("himmelblau", "pam-himmelblau", "nss-himmelblau"), dossier=DOSSIER_COMPIL):
+        self.ecrire(f"{dossier}/packaging/sesame-compilation.json",
+                    json.dumps({"commit": "abc", "date": "x", "paquets": list(paquets)}))
+        self.c.dossier_compilation = dossier
+
+    def test_compiler(self):
+        self.assertEqual(self.statut("compiler"), "a_faire")
+        self.marque_compilation(("himmelblau", "pam-himmelblau"))
+        self.assertEqual(self.statut("compiler"), "a_faire")  # un paquet manque
+        self.marque_compilation()
+        self.assertEqual(self.statut("compiler"), "fait")
+        self.marque_compilation(("himmelblau_4.0.1_amd64.deb", "pam-himmelblau_4.0.1_amd64.deb",
+                                 "nss-himmelblau_4.0.1_amd64.deb"))
+        self.assertEqual(self.statut("compiler"), "fait")
+        self.c.dossier_compilation = "/ailleurs"
+        self.assertEqual(self.statut("compiler"), "a_faire")
+
+    def test_compiler_fait_si_himmelblau_est_installe(self):
+        self.installer_himmelblau()
+        statut, detail = self.detecte("compiler")
+        self.assertEqual(statut, "fait")
+        self.assertIn("déjà installé", detail)
+
+    def test_installer(self):
+        statut, detail = self.detecte("installer")
+        self.assertEqual(statut, "a_faire")
+        self.assertIn("himmelblau, pam-himmelblau, nss-himmelblau", detail)
+        self.m.paquets.update({"himmelblau", "pam-himmelblau"})
+        self.assertIn("nss-himmelblau", self.detecte("installer")[1])
+        self.assertEqual(self.statut("installer"), "a_faire")
+        self.m.paquets.add("nss-himmelblau")
         statut, detail = self.detecte("installer")
         self.assertEqual(statut, "fait")
-        self.assertIn("authd 0.7.1 et le module Entra 0.5.0", detail)
-        self.m.versions["authd-msentraid"] = "0.4.2"
-        statut, detail = self.detecte("installer")
-        self.assertEqual(statut, "fait")  # installé : « Configurer » reste accessible pour passer au mode code
-        self.assertIn("Trop ancien", detail)
-        self.assertIn("0.4.2", detail)
-        self.c.connexion = "code"
-        self.assertNotIn("Trop ancien", self.detecte("installer")[1])
+        self.assertIn("4.0.1", detail)
 
     def test_installer_ubuntu_trop_ancien(self):
         self.ecrire("/etc/os-release", 'VERSION_ID="22.04"\n')
         self.assertEqual(self.statut("installer"), "bloquee")
 
     def test_configurer(self):
-        self.assertEqual(self.statut("configurer"), "a_faire")  # le module n'est pas déclaré
-        self.ecrire(chemins.BROKER_AUTHD, "[x]\n")
-        self.assertEqual(self.statut("configurer"), "fait")
-        self.m.actifs.discard(chemins.SERVICE_BROKER)
         self.assertEqual(self.statut("configurer"), "a_faire")
-        self.m.actifs.add(chemins.SERVICE_BROKER)
-        self.ecrire(chemins.SESAME_CONF, "[entra]\nlocataire = non\n")
-        self.assertEqual(self.statut("configurer"), "a_faire")
-
-    def test_configurer_mode_de_connexion_change(self):
-        self.ecrire(chemins.BROKER_AUTHD, "[x]\n")
-        etat.noter(self.m, "configurer", {"date": "x", "connexion": "mot-de-passe"})
+        self.installer_himmelblau()
         self.assertEqual(self.statut("configurer"), "fait")
-        etat.noter(self.m, "configurer", {"date": "x"})  # configuré par Sésame 1.0.0 : code sur le téléphone
+        self.m.actifs.discard("himmelblaud")
         statut, detail = self.detecte("configurer")
         self.assertEqual(statut, "a_faire")
-        self.assertIn("code sur le téléphone → mot de passe", detail)
-        conf = self.lire(chemins.SESAME_CONF)
-        self.assertIn("connexion = mot-de-passe\n", conf)
-        self.ecrire(chemins.SESAME_CONF, conf.replace("connexion = mot-de-passe\n", "connexion = code\n"))
-        self.assertEqual(self.statut("configurer"), "fait")
+        self.assertIn("himmelblaud", detail)
+        self.m.actifs.add("himmelblaud")
+        self.ecrire(himmelblau.USER_MAP, "autre:x@y.com\n")
+        self.assertEqual(self.statut("configurer"), "a_faire")
+        self.ecrire(himmelblau.USER_MAP, f"{A}:{N}\n")
+        self.ecrire(himmelblau.CONFIG, "[global]\ndomain = a.com\n")
+        self.assertEqual(self.statut("configurer"), "a_faire")
 
     def test_premiere_connexion(self):
-        self.ecrire(chemins.NSSWITCH, "passwd: files systemd authd\n")
-        self.assertEqual(self.statut("premiere_connexion"), "fait")
-        del self.m.entra[N]
-        self.assertEqual(self.statut("premiere_connexion"), "a_faire")
-        self.c.compte = ""
-        self.assertEqual(self.statut("premiere_connexion"), "a_faire")
-
-    def test_premiere_connexion_exige_authd_dans_nsswitch(self):
-        self.assertEqual(self.statut("premiere_connexion"), "a_faire")
-
-    def test_premiere_connexion_refuse_un_compte_local(self):
-        self.ecrire(chemins.NSSWITCH, "passwd: files authd\n")
-        self.ecrire("/etc/passwd", self.lire("/etc/passwd") + f"{N}:x:5000:5000::/home/x:/bin/sh\n")
-        self.assertEqual(self.statut("premiere_connexion"), "a_faire")
-
-    def test_reprise(self):
-        self.assertEqual(self.statut("reprise"), "a_faire")
-        reprise.programmer(self.m, self.parametres())
-        self.assertEqual(self.statut("reprise"), "programmee")
-        self.m.supprimer(chemins.REPRISE_PROGRAMMEE)
-        self.assertTrue(reprise.reprendre(self.m, self.parametres(), "maintenant")[0])
-        self.assertEqual(self.statut("reprise"), "fait")
-
-    def test_reprise_interrompue(self):
-        self.ecrire(chemins.REPRISE_ETAT, "{}")
-        statut, detail = self.detecte("reprise")
+        statut, detail = self.detecte("premiere_connexion")
         self.assertEqual(statut, "a_faire")
-        self.assertIn("annuler-reprise", detail)
-
-    def test_verification(self):
-        self.assertEqual(self.statut("verification"), "a_faire")
-        etat.noter(self.m, "verification", {"date": "x"})
-        self.assertEqual(self.statut("verification"), "fait")
+        self.assertIn(N, detail)
+        etat.noter(self.m, "premiere_connexion", {"date": "x"})
+        self.assertEqual(self.statut("premiere_connexion"), "fait")
 
 
 class TestEnsemble(BaseEtapes):
+    def test_ordre_et_identifiants(self):
+        self.assertEqual([e.id for e in etapes.ETAPES],
+                         ["sauvegarde", "secours", "nom_machine", "quitter_ad", "outils", "compiler", "installer",
+                          "configurer", "premiere_connexion"])
+        for e in etapes.ETAPES:
+            self.assertTrue(e.titre and e.explication)
+        self.assertEqual(etapes.PREREQUIS, {
+            "secours": ["sauvegarde"], "nom_machine": ["sauvegarde"], "quitter_ad": ["sauvegarde", "secours"],
+            "outils": ["sauvegarde"], "compiler": ["outils"], "installer": ["compiler", "quitter_ad"],
+            "configurer": ["installer", "secours"],
+            "premiere_connexion": ["configurer"]})
+
     def test_forme_des_elements(self):
         liste = etapes.lire_etat(self.m)
         self.assertEqual([e["id"] for e in liste], [e.id for e in etapes.ETAPES])
-        self.assertEqual([e.id for e in etapes.ETAPES], ["sauvegarde", "secours", "quitter_ad", "installer", "configurer",
-                                                          "premiere_connexion", "reprise", "verification"])
         for e in liste:
-            self.assertEqual(set(e), {"id", "titre", "statut", "detail", "explication", "action"})
-            self.assertIn(e["statut"], {"a_faire", "fait", "sans_objet", "programmee", "bloquee", "inconnu"})
-        self.assertEqual({e["id"]: e["action"] for e in liste}["premiere_connexion"], None)
-        self.assertEqual({e["id"]: e["action"] for e in liste}["quitter_ad"], "quitter-ad")
+            self.assertLessEqual({"id", "titre", "explication", "statut", "detail"}, set(e))
 
-    def test_etapes_bloquees_disent_pourquoi(self):
+    def test_blocage_par_prerequis(self):
         e = self.lire_etat()
         self.assertEqual(e["sauvegarde"]["statut"], "a_faire")
-        self.assertEqual(e["secours"]["statut"], "fait")  # fait reste fait
-        self.assertEqual(e["reprise"]["statut"], "bloquee")
-        self.assertIn("Première connexion par Entra", e["reprise"]["detail"])
-        self.assertEqual(e["verification"]["statut"], "bloquee")
-
-    def test_sans_objet_ne_bloque_pas(self):
+        self.assertEqual(e["secours"]["statut"], "fait")
+        self.assertEqual(e["quitter_ad"]["statut"], "sans_objet")
+        for id_ in ("nom_machine", "outils", "compiler", "installer", "configurer"):
+            self.assertEqual(e[id_]["statut"], "bloquee", id_)
+        self.assertIn("Sauvegarder la configuration", e["nom_machine"]["detail"])
+        self.assertEqual(e["premiere_connexion"]["statut"], "bloquee")
         sauvegarde.faire(self.m, A)
         e = self.lire_etat()
-        self.assertEqual(e["quitter_ad"]["statut"], "sans_objet")
-        self.m.snaps.clear()
-        self.assertEqual(self.lire_etat()["installer"]["statut"], "a_faire")
+        self.assertEqual(e["outils"]["statut"], "a_faire")
+        self.assertEqual(e["compiler"]["statut"], "bloquee")
+        self.assertIn("Installer les outils de compilation", e["compiler"]["detail"])
 
     def test_etape_suivante(self):
-        liste = etapes.lire_etat(self.m)
-        self.assertEqual(etapes.etape_suivante(liste), "sauvegarde")
+        self.assertEqual(etapes.etat_complet(self.m)["suivante"], "sauvegarde")
         sauvegarde.faire(self.m, A)
-        self.assertEqual(etapes.etape_suivante(etapes.lire_etat(self.m)), "configurer")
-        self.assertIsNone(etapes.etape_suivante([{"statut": "fait"}, {"statut": "sans_objet"}, {"statut": "bloquee"}]))
-        self.assertEqual(etapes.etape_suivante([{"id": "x", "statut": "programmee"}]), "x")
+        self.assertEqual(etapes.etat_complet(self.m)["suivante"], "nom_machine")
 
     def test_tout_en_place(self):
         sauvegarde.faire(self.m, A)
-        self.ecrire(chemins.BROKER_AUTHD, "x")
-        self.ecrire(chemins.NSSWITCH, "passwd: files authd\n")
-        self.m.actifs.add(chemins.SERVICE_BROKER)
-        self.assertTrue(reprise.reprendre(self.m, self.parametres(), "maintenant")[0])
-        etat.noter(self.m, "verification", {"date": "x"})
-        liste = etapes.lire_etat(self.m)
-        self.assertIsNone(etapes.etape_suivante(liste), liste)
+        self.installer_himmelblau()
+        self.installer_outils()
+        self.ecrire("/etc/hostname", NOM + "\n")
+        etat.noter(self.m, "premiere_connexion", {"date": "x"})
+        d = etapes.etat_complet(self.m)
+        self.assertEqual({e["id"]: e["statut"] for e in d["etapes"]},
+                         {"sauvegarde": "fait", "secours": "fait", "nom_machine": "fait", "quitter_ad": "sans_objet",
+                          "outils": "fait", "compiler": "fait", "installer": "fait", "configurer": "fait", "premiere_connexion": "fait"})
+        self.assertIsNone(d["suivante"])
+
+    def test_etat_complet_sans_derniere_reprise(self):
+        d = etapes.etat_complet(self.m)
+        self.assertEqual(set(d), {"version", "etapes", "suivante"})
+        self.assertEqual(d["version"], VERSION)
 
     def test_la_detection_ne_plante_jamais(self):
-        def casse(*a, **k):
-            raise OSError("disque en panne")
-        self.m.lancer = casse
-        self.m.lire = casse
+        self.m.lancer = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boum"))
         liste = etapes.lire_etat(self.m)
-        self.assertEqual(len(liste), 8)
-        self.assertEqual({e["statut"] for e in liste}, {"inconnu"})
-        self.assertIn("disque en panne", liste[0]["detail"])
+        self.assertIn("inconnu", {e["statut"] for e in liste})
+        self.assertTrue(all(isinstance(e["detail"], str) for e in liste))
 
-    def test_une_etape_qui_plante_est_inconnue(self):
-        def casse(systeme, c):
-            raise ValueError("boum")
-        d = dict(etapes.DETECTIONS, installer=casse)
-        ancien, etapes.DETECTIONS = etapes.DETECTIONS, d
-        self.addCleanup(setattr, etapes, "DETECTIONS", ancien)
-        e = self.lire_etat()
-        self.assertEqual(e["installer"]["statut"], "inconnu")
-        self.assertIn("boum", e["installer"]["detail"])
-        self.assertNotEqual(e["sauvegarde"]["statut"], "inconnu")
-
-    def test_sans_sesame_conf_les_defauts_servent(self):
-        self.m.supprimer(chemins.SESAME_CONF)
-        self.m.uid = U
-        self.assertEqual(etapes._config(self.m).compte_local, A)
-        self.assertEqual(self.lire_etat()["premiere_connexion"]["statut"], "bloquee")
-
-    def test_etat_complet_et_derniere_reprise(self):
-        self.assertIsNone(etapes.derniere_reprise(self.m))
-        self.assertTrue(reprise.reprendre(self.m, self.parametres(), "maintenant")[0])
-        donnees = etapes.etat_complet(self.m)
-        self.assertEqual(donnees["version"], VERSION)
-        self.assertTrue(donnees["derniere_reprise"]["ok"])
-        self.assertEqual(len(donnees["etapes"]), 8)
-        self.assertIn("suivante", donnees)
+    def test_detection_sans_root_ne_modifie_rien(self):
+        etapes.etat_complet(self.m)
+        self.assertEqual(self.m.modifiantes(), [])
