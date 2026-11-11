@@ -1,0 +1,14 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+# Rien à compiler. Les tests (`make test`) sont lancés par scripts/build-deb.sh avant la construction.
+override_dh_auto_build:
+override_dh_auto_test:
+override_dh_auto_install:
+
+# sesame-reprise.service n'est jamais activé ni démarré par l'installation : c'est « sesame reprise --au-demarrage »
+# qui l'active, pour un seul démarrage.
+override_dh_installsystemd:
+	dh_installsystemd --no-enable --no-start --no-restart-after-upgrade --no-stop-on-upgrade sesame-reprise.service

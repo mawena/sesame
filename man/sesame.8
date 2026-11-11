@@ -1,0 +1,131 @@
+.TH SESAME 8 "11 novembre 2026" "sesame 1.0.0" "Administration système"
+.SH NOM
+sesame \- connecte un poste Ubuntu à Microsoft Entra ID (authd) et fait reprendre le compte local par le compte Entra
+.SH SYNOPSIS
+.B sesame
+.RB [ etat ]
+.RB [ \-\-json ]
+.br
+.B sesame
+.RB ( sauvegarde " | " secours " | " quitter\-ad " | " installer " | " configurer " | " reprise " | " annuler\-reprise " | " desactiver )
+.RI [ OPTIONS ]
+.br
+.B sesame verifier
+.br
+.B sesame portail
+.br
+.B sesame version
+.br
+.B /usr/libexec/sesame/sesame\-racine
+.RB [ \-\-json ]
+.I ACTION
+.RI [ OPTIONS ]
+.SH DESCRIPTION
+.B sesame
+branche un poste Ubuntu Desktop 24.04 ou plus récent sur Microsoft Entra ID avec authd et son module
+.BR authd\-msentraid
+(snap), puis fait reprendre au compte Entra le compte local existant : même UID, même dossier personnel, mêmes groupes,
+même crontab.
+.PP
+Chaque étape détecte si elle est déjà faite et peut être relancée sans risque. Avant chaque étape qui modifie quelque
+chose, une sauvegarde est faite dans
+.IR /var/lib/sesame/sauvegardes .
+Aucun secret n'est stocké.
+.PP
+Les actions qui touchent au système sont faites par l'assistant root
+.BR sesame\-racine ,
+lancé par
+.BR pkexec (1)
+(action polkit
+.IR io.github.mawena.sesame.racine ).
+L'assistant graphique est décrit dans
+.BR sesame\-assistant (1).
+.SH ÉTAPES
+Dans l'ordre :
+.TP
+.B sauvegarde
+Copie la configuration des comptes et de la connexion (passwd, shadow, group, nsswitch.conf, pam.d, sssd, gdm3,
+crontab du compte local\ ...).
+.TP
+.B secours
+Crée (ou met à jour) un compte administrateur local de dépannage. Le mot de passe est demandé deux fois et passe par
+l'entrée standard de l'assistant root ; il n'est jamais écrit.
+.TP
+.B quitter\-ad
+Quitte le domaine Active Directory et retire sssd de la configuration, si le poste en fait partie.
+.TP
+.B installer
+Ajoute le PPA d'authd, installe authd et le snap authd\-msentraid.
+.TP
+.B configurer
+Écrit
+.I /etc/sesame/sesame.conf
+et la configuration du module Entra à partir de l'ID du locataire, de l'ID client et du compte Entra
+.RB ( \-\-locataire ", " \-\-client ", " \-\-compte ", " \-\-compte\-local ", " \-\-secours ", " \-\-groupes ).
+Les valeurs manquantes sont demandées.
+.TP
+.B reprise
+Le compte Entra reprend l'UID, le GID, le dossier et la crontab du compte local, qui disparaît. Options :
+.BR \-\-au\-demarrage
+(recommandé : la reprise se fait au prochain démarrage, avant toute session),
+.BR \-\-maintenant ,
+.BR \-\-annuler\-programmation .
+Si la reprise échoue, elle est annulée automatiquement.
+.TP
+.B annuler\-reprise
+Remet le compte local et les réglages d'avant la reprise.
+.TP
+.B desactiver
+Supprime la configuration du module Entra dans authd et redémarre authd : la connexion Entra est coupée, rien n'est
+désinstallé.
+.TP
+.B verifier
+Contrôles sans root (compte, dossier, groupes, crontab, services, compte de secours).
+.TP
+.B portail
+Explique, pas à pas, la création de l'application dans le portail Microsoft Entra.
+.PP
+La première connexion par Entra se fait à l'écran d'accueil ; l'assistant graphique l'explique.
+.SH OPTIONS
+.TP
+.B \-\-json
+.B etat
+écrit l'état des étapes en JSON ; avec
+.BR sesame\-racine ,
+écrit une ligne JSON par événement.
+.SH CODE DE SORTIE
+0 si tout va bien, 1 si l'action échoue, 2 en cas d'erreur d'usage.
+.SH FICHIERS
+.TP
+.I /etc/sesame/sesame.conf
+Réglages (locataire, client, compte Entra, compte local, compte de secours, groupes).
+.TP
+.I /var/lib/sesame/etat.json
+Ce que Sésame a fait et quand.
+.TP
+.I /var/lib/sesame/sauvegardes/
+Sauvegardes, une par étape. Conservées à la purge du paquet.
+.TP
+.I /var/lib/sesame/reprise\-programmee
+Présent : reprise au prochain démarrage (service
+.IR sesame\-reprise.service ).
+.TP
+.I /var/lib/sesame/reprise\-etat.json
+État d'une reprise en cours, pour l'annuler.
+.TP
+.I /var/lib/sesame/derniere\-reprise.json
+Résultat de la dernière reprise.
+.SH EXEMPLES
+.nf
+sesame
+sesame configurer
+sesame reprise \-\-au\-demarrage
+sesame annuler\-reprise
+sudo journalctl \-u authd \-u snap.authd\-msentraid.authd\-msentraid.service \-u sesame\-reprise
+.fi
+.SH VOIR AUSSI
+.BR sesame\-assistant (1),
+.BR pkexec (1),
+.BR authctl (1).
+.PP
+https://mawena.github.io/sesame/

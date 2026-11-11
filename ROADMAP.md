@@ -30,11 +30,11 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 
 ## Phase 4 — Paquet, dépôt APT, site, documentation
 
-- [ ] `debian/`, `Makefile`, `scripts/build-deb.sh` (tests, lintian, SHA256SUMS)
-- [ ] Politique polkit, service `sesame-reprise.service`, page de manuel `sesame.8`
-- [ ] Clé de signature « Sésame APT (mawena) », `data/apt/`, `scripts/publier-apt.sh`
-- [ ] Site (page d'accueil, `installer.sh`)
-- [ ] `README.md`, `CHANGELOG.md`, `LICENSE`
+- [x] `debian/`, `Makefile`, `scripts/build-deb.sh` (tests, lintian, SHA256SUMS)
+- [x] Politique polkit, service `sesame-reprise.service`, page de manuel `sesame.8`
+- [x] Clé de signature « Sésame APT (mawena) », `data/apt/`, `scripts/publier-apt.sh`
+- [x] Site (page d'accueil, `installer.sh`)
+- [x] `README.md`, `CHANGELOG.md`, `LICENSE`
 
 ## Phase 5 — Intégration
 
