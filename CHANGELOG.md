@@ -7,6 +7,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.0.0] - 2026-11-11
+
 Première version : Sésame branche un poste Ubuntu 24.04+ sur Microsoft Entra ID avec authd, puis le compte Entra reprend
 le compte local existant.
 
@@ -18,7 +20,8 @@ le compte local existant.
   vérification.
 - **Reprise du compte local par le compte Entra** : UID, GID, dossier personnel, groupes supplémentaires, crontab,
   `subuid`/`subgid`, unités systemd et réglages qui citaient l'ancien compte ; au prochain démarrage (recommandé, par
-  `sesame-reprise.service`, avant toute session) ou tout de suite.
+  `sesame-reprise.service`, avant toute session et avant les services qui tournent sous le compte local) ou
+  tout de suite.
 - **Annulation** automatique en cas d'échec, et à la main (`sesame annuler-reprise`) ; `sesame desactiver` coupe la
   connexion Entra sans rien désinstaller.
 - **Sauvegardes** dans `/var/lib/sesame/sauvegardes` avant chaque étape qui modifie quelque chose, conservées à la purge
