@@ -65,5 +65,5 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 - [x] Guide du portail : URI de redirection, inscription des appareils, double authentification, AD FS
 - [x] Documentation : README, pages de manuel, site, conception 1.1.0
 - [x] Tests par la file Gagarine
-- [ ] Release 1.1.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
+- [x] Release 1.1.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
 - [ ] Mise à jour sur le poste
