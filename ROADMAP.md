@@ -11,14 +11,14 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 
 ## Phase 2 — Cœur et assistant root
 
-- [ ] `sesame/systeme.py` : accès au système sous une racine, commandes, processus, NSS
-- [ ] `sesame/config.py` : `sesame.conf`, valeurs détectées, validation, `broker.conf`
-- [ ] `sesame/etapes.py` : détection sans root des 8 étapes, étape suivante
-- [ ] Actions root : sauvegarde, secours, quitter l'AD, installer, configurer, désactiver
-- [ ] Reprise du compte (maintenant et au démarrage) et annulation automatique ou manuelle
-- [ ] `sesame/verification.py`, `sesame/guide.py`
-- [ ] `sesame-racine` (JSON ligne par ligne) et la commande `sesame`
-- [ ] Tests unitaires du cœur (racine temporaire, commandes simulées, pannes à chaque étape de la reprise)
+- [x] `sesame/systeme.py` : accès au système sous une racine, commandes, processus, NSS
+- [x] `sesame/config.py` : `sesame.conf`, valeurs détectées, validation, `broker.conf`
+- [x] `sesame/etapes.py` : détection sans root des 8 étapes, étape suivante
+- [x] Actions root : sauvegarde, secours, quitter l'AD, installer, configurer, désactiver
+- [x] Reprise du compte (maintenant et au démarrage) et annulation automatique ou manuelle
+- [x] `sesame/verification.py`, `sesame/guide.py`
+- [x] `sesame-racine` (JSON ligne par ligne) et la commande `sesame`
+- [x] Tests unitaires du cœur (racine temporaire, commandes simulées, pannes à chaque étape de la reprise)
 
 ## Phase 3 — Assistant graphique
 
