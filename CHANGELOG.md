@@ -7,6 +7,14 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [2.0.1] - 2026-11-11
+
+### Corrigé
+
+- La compilation de Himmelblau lancée par la file Gagarine échouait (« No module named 'sesame' ») : la commande transmet
+  désormais toujours `PYTHONPATH`, car le processus lancé n'hérite pas du `sys.path` de l'assistant.
+- « Rejoindre » reprend les paquets de Himmelblau déjà compilés au lieu de tout recompiler.
+
 ## [2.0.0] - 2026-11-11
 
 ### Modifié
