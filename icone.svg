@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Icône de Sésame : une porte qui s'ouvre sur la lumière, avec une clé. Dessin original (mawena), licence MIT. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="fond" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#99c1f1"/>
+      <stop offset="1" stop-color="#3584e4"/>
+    </linearGradient>
+    <linearGradient id="lumiere" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff6c8"/>
+      <stop offset="1" stop-color="#f9d44a"/>
+    </linearGradient>
+    <linearGradient id="battant" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#613583"/>
+      <stop offset="1" stop-color="#8a4fb4"/>
+    </linearGradient>
+    <linearGradient id="cle" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe27a"/>
+      <stop offset="1" stop-color="#e5a50a"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="26" fill="url(#fond)"/>
+  <!-- cadre de la porte -->
+  <path d="M34 108V50a30 30 0 0 1 60 0v58z" fill="#1e1e2e" opacity="0.9"/>
+  <!-- lumière derrière la porte -->
+  <path d="M40 108V50a24 24 0 0 1 48 0v58z" fill="url(#lumiere)"/>
+  <path d="M40 108L88 108L96 120L32 120Z" fill="#f9d44a" opacity="0.35"/>
+  <!-- battant ouvert, vu en perspective -->
+  <path d="M40 108V50a24 24 0 0 1 24-24L64 112z" fill="url(#battant)"/>
+  <path d="M40 108V50a24 24 0 0 1 24-24" fill="none" stroke="#c061cb" stroke-width="2" opacity="0.6"/>
+  <circle cx="58" cy="68" r="2.8" fill="#f9d44a"/>
+  <!-- clé -->
+  <g transform="translate(70 84) rotate(-35)">
+    <rect x="0" y="-3.5" width="40" height="7" rx="3.5" fill="url(#cle)"/>
+    <rect x="28" y="2" width="5" height="9" rx="1.5" fill="url(#cle)"/>
+    <rect x="35" y="2" width="4" height="6" rx="1.5" fill="url(#cle)"/>
+    <circle cx="-2" cy="0" r="11" fill="url(#cle)"/>
+    <circle cx="-2" cy="0" r="5" fill="#8a4fb4"/>
+  </g>
+  <rect x="8" y="8" width="112" height="112" rx="26" fill="none" stroke="#ffffff" stroke-opacity="0.25" stroke-width="2"/>
+</svg>
