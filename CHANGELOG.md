@@ -7,6 +7,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [1.1.0] - 2026-11-11
+
 ### Ajouté
 
 - Connexion **comme sur Windows** : adresse pro, mot de passe Entra, puis double authentification (Microsoft

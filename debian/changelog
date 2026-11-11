@@ -1,3 +1,18 @@
+sesame (1.1.0) unstable; urgency=medium
+
+  * Connexion comme sur Windows : adresse pro, mot de passe Entra et
+    double authentification (flux « Entra authentication » d'authd 0.7.0
+    et du module Entra 0.5.0), par défaut, avec inscription du poste dans
+    Entra. Le code sur le téléphone reste proposé (réglage connexion,
+    option --connexion, choix « Connexion » dans l'assistant).
+  * L'étape « Installer » met à jour le module Entra et affiche les
+    versions ; « Configurer » refuse les versions trop anciennes pour la
+    connexion par mot de passe et repasse à faire quand le mode change.
+  * Guide du portail : URI de redirection, inscription des appareils,
+    double authentification, AD FS, accès conditionnel.
+
+ -- mawena <57989130+mawena@users.noreply.github.com>  Wed, 11 Nov 2026 15:46:09 +0000
+
 sesame (1.0.0) unstable; urgency=medium
 
   * Première version : connecte un poste Ubuntu 24.04+ à Microsoft Entra ID
