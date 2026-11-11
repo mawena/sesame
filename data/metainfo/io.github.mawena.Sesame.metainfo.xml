@@ -54,6 +54,11 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="2.0.0" date="2026-11-11">
+      <description>
+        <p>Rejoindre Microsoft Entra ID comme un PC Windows, avec Himmelblau compilé sur le poste : seulement l'adresse pro et le nom de la machine.</p>
+      </description>
+    </release>
     <release version="1.1.0" date="2026-11-11">
       <description>
         <p>Connexion comme sur Windows : adresse pro, mot de passe Entra et double authentification, avec inscription du poste dans Entra. Le code sur le téléphone reste proposé.</p>

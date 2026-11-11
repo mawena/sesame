@@ -2,7 +2,14 @@ Source: sesame
 Section: admin
 Priority: optional
 Maintainer: mawena <57989130+mawena@users.noreply.github.com>
-Build-Depends: ${misc:Depends},
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Homepage: https://mawena.github.io/sesame/
+Rules-Requires-Root: no
+
+Package: sesame
+Architecture: all
+Depends: ${misc:Depends},
          python3 (>= 3.10),
          pkexec,
          polkitd,
@@ -18,11 +25,11 @@ Description: join an Ubuntu desktop to Microsoft Entra ID with Himmelblau
  and settings. You sign in with the Entra password and confirm on your
  phone.
  .
- Every step detects whether it is already done and can be run again. A
- backup is made before each step that changes something, and a rescue
- administrator account is created. Himmelblau (stable branch) is built on
- the machine, as the user and without root, then installed; this takes
- about 30 to 60 minutes and is queued by Gagarine when it is present.
+ Every step detects whether it is already done and can be run again. The
+ configuration is backed up first, and a rescue administrator account is
+ created. Himmelblau (stable branch) is built on the machine, as the user
+ and without root, then installed; this takes about 30 to 60 minutes and is
+ queued by Gagarine when it is present.
  .
  It comes as a graphical assistant ("sesame-assistant", GTK 4 and
  libadwaita, which needs the recommended packages), a command line

@@ -2,8 +2,8 @@
 import json
 import os
 
-from sesame import actions, chemins, config as cfg, etat, himmelblau
-from sesame.systeme import ErreurSesame
+from sesame import actions, chemins, config as cfg, etat, himmelblau, nsswitch
+from sesame.systeme import ErreurSesame, Resultat
 from tests.commun import A, DOSSIER_COMPIL, EMPREINTE, N, NOM, PAQUETS_DIR, Base
 
 
@@ -284,12 +284,22 @@ class TestConfigurer(BaseActions):
         actions.configurer(self.m, N)
         self.assertEqual(himmelblau.lire_user_map(self.lire(himmelblau.USER_MAP)), {"autre": N})
 
-    def test_avertit_si_nss_ou_pam_manquent(self):
+    def test_retablit_nss_et_pam_s_ils_manquent(self):
         self.ecrire(chemins.NSSWITCH, "passwd: files\ngroup: files\n")
         self.ecrire(chemins.PAM_COMMON_AUTH, "auth pam_unix.so\n")
         actions.configurer(self.m, N, A)
+        self.assertIn(["pam-auth-update", "--enable", "himmelblau"], self.m.appels)
+        self.assertIn("pam_himmelblau", self.lire(chemins.PAM_COMMON_AUTH))
+        self.assertFalse(nsswitch.manque(self.lire(chemins.NSSWITCH), "himmelblau"))
+        self.assertEqual([t for ty, t in self.m.evenements if ty == "avertissement"], [])
+
+    def test_avertit_si_pam_ne_peut_etre_retabli(self):
+        self.ecrire(chemins.PAM_COMMON_AUTH, "auth pam_unix.so\n")
+        self.m.forces[("pam-auth-update", "--enable", "himmelblau")] = Resultat(1, "", "refusé")
+        actions.configurer(self.m, N, A)
         avertissements = [t for ty, t in self.m.evenements if ty == "avertissement"]
-        self.assertEqual(len(avertissements), 2)
+        self.assertEqual(len(avertissements), 1)
+        self.assertIn("pam_himmelblau", avertissements[0])
         self.assertTrue(self.lire(himmelblau.USER_MAP))  # la configuration est écrite malgré tout
 
     def test_erreurs(self):

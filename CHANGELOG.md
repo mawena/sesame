@@ -7,6 +7,8 @@ Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/), et le p
 
 ## [Non publié]
 
+## [2.0.0] - 2026-11-11
+
 ### Modifié
 
 - **Passage à Himmelblau** : Sésame relie le poste à Microsoft Entra ID comme un PC Windows, sans application ni ID à

@@ -77,6 +77,6 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 - [x] Compilation de Himmelblau stable-4.x sous l'utilisateur (podman, file Gagarine), mise à jour
 - [x] Assistant graphique : page « Rejoindre » (adresse pro, nom de la machine), compilation, détails, mise à jour, désactiver
 - [x] Ligne de commande `sesame rejoindre`, documentation
-- [ ] Tests par la file Gagarine
+- [x] Tests par la file Gagarine
 - [ ] Release 2.0.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
 - [ ] Mise à jour sur le poste, compilation de Himmelblau, première connexion Entra
