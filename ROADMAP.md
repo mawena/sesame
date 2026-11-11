@@ -38,14 +38,14 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 
 ## Phase 5 — Intégration
 
-- [ ] Tests complets par la file Gagarine
-- [ ] Construction du `.deb`, lintian sans erreur ni avertissement
+- [x] Tests complets par la file Gagarine
+- [x] Construction du `.deb`, lintian sans erreur ni avertissement
 - [ ] Installation sur le poste (`pkexec`), `sesame etat` et l'assistant sur le vrai système
 
 ## Phase 6 — Release 1.0.0
 
-- [ ] Lien SSH du dépôt, `origin`, dépôt GitHub (« About » : site + dépôt APT)
-- [ ] Release git flow 1.0.0, CHANGELOG, tag `v1.0.0`, push de `main`, `develop` et des tags
+- [x] Lien SSH du dépôt, `origin`, dépôt GitHub (« About » : site + dépôt APT)
+- [x] Release git flow 1.0.0, CHANGELOG, tag `v1.0.0`, push de `main`, `develop` et des tags
 - [ ] Release GitHub avec le `.deb` et `SHA256SUMS`
 - [ ] Publication dans le dépôt APT, vérification par `apt-get update` sans root
 
