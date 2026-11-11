@@ -66,4 +66,4 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 - [x] Documentation : README, pages de manuel, site, conception 1.1.0
 - [x] Tests par la file Gagarine
 - [x] Release 1.1.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
-- [ ] Mise à jour sur le poste
+- [x] Mise à jour sur le poste
