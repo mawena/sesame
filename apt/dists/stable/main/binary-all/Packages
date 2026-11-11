@@ -34,3 +34,39 @@ Description: connect an Ubuntu desktop to Microsoft Entra ID with authd
  The package installs a signed APT repository entry, so "apt upgrade" keeps
  Sesame up to date.
 
+Package: sesame
+Version: 1.1.0
+Architecture: all
+Maintainer: mawena <57989130+mawena@users.noreply.github.com>
+Installed-Size: 207
+Depends: python3 (>= 3.10), pkexec, polkitd, realmd, snapd, software-properties-common, passwd, cron | cron-daemon
+Recommends: python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1 (>= 1.5)
+Filename: pool/main/sesame_1.1.0_all.deb
+Size: 52870
+MD5sum: ea1220109a771b78ef081087e2696f62
+SHA1: 195a70499db8da62c7c89023c31203a06e16d645
+SHA256: dfc5019647aea4d66dcd60b09a462bdec4a4a13ae3521c47416ae64938bebacc
+Section: admin
+Priority: optional
+Homepage: https://mawena.github.io/sesame/
+Description: connect an Ubuntu desktop to Microsoft Entra ID with authd
+ Sesame connects an Ubuntu Desktop 24.04 or newer to Microsoft Entra ID
+ through authd and its authd-msentraid snap, then lets the Entra account
+ take over the existing local account: same UID, same home directory, same
+ groups, same crontab.
+ .
+ Every step detects whether it is already done and can be run again. A
+ backup is made before each step that changes something, a rescue
+ administrator account can be created, and the takeover is rolled back
+ automatically if it fails (or by hand with "sesame annuler-reprise"). It
+ is best done at the next boot, by a systemd service that runs before any
+ session.
+ .
+ It comes as a graphical assistant ("sesame-assistant", GTK 4 and
+ libadwaita, which needs the recommended packages), a command line
+ ("sesame") and a root helper launched through pkexec. The Entra
+ application must be created in the Entra portal; Sesame explains how.
+ .
+ The package installs a signed APT repository entry, so "apt upgrade" keeps
+ Sesame up to date.
+
