@@ -78,5 +78,5 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 - [x] Assistant graphique : page « Rejoindre » (adresse pro, nom de la machine), compilation, détails, mise à jour, désactiver
 - [x] Ligne de commande `sesame rejoindre`, documentation
 - [x] Tests par la file Gagarine
-- [ ] Release 2.0.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
+- [x] Release 2.0.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
 - [ ] Mise à jour sur le poste, compilation de Himmelblau, première connexion Entra
