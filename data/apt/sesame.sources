@@ -1,0 +1,5 @@
+Types: deb
+URIs: https://mawena.github.io/sesame/apt
+Suites: stable
+Components: main
+Signed-By: /usr/share/keyrings/sesame.gpg

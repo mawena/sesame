@@ -1,0 +1,13 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "purge" ]; then
+    # Les réglages partent à la purge. Les sauvegardes de /var/lib/sesame/sauvegardes restent : elles contiennent
+    # /etc/passwd, shadow, group… d'avant la reprise, et sont peut-être la seule façon de revenir en arrière après
+    # la désinstallation. On ne les supprime que sur décision de l'utilisateur.
+    rm -rf /etc/sesame
+fi
+
+#DEBHELPER#
+
+exit 0

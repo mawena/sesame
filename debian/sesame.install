@@ -1,0 +1,13 @@
+bin/sesame usr/bin
+bin/sesame-assistant usr/bin
+libexec/sesame-racine usr/libexec/sesame
+sesame/*.py usr/share/sesame/sesame
+sesame/interface/*.py usr/share/sesame/sesame/interface
+data/systemd/sesame-reprise.service usr/lib/systemd/system
+data/polkit/io.github.mawena.sesame.policy usr/share/polkit-1/actions
+data/applications/io.github.mawena.Sesame.desktop usr/share/applications
+data/metainfo/io.github.mawena.Sesame.metainfo.xml usr/share/metainfo
+data/icons/hicolor/scalable/apps/io.github.mawena.Sesame.svg usr/share/icons/hicolor/scalable/apps
+data/icons/hicolor/symbolic/apps/io.github.mawena.Sesame-symbolic.svg usr/share/icons/hicolor/symbolic/apps
+data/apt/sesame.sources etc/apt/sources.list.d
+data/apt/sesame.gpg usr/share/keyrings

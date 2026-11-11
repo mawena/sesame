@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.mawena.Sesame</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Sésame</name>
+  <summary>Connecte votre poste Ubuntu à Microsoft Entra ID</summary>
+  <summary xml:lang="fr">Connecte votre poste Ubuntu à Microsoft Entra ID</summary>
+  <developer id="io.github.mawena">
+    <name>mawena</name>
+  </developer>
+  <description>
+    <p>Sésame connects an Ubuntu 24.04 or newer desktop to Microsoft Entra ID through authd, then lets the Entra account take over the existing local account: same user ID, same home folder, same groups, same crontab.</p>
+    <p>The assistant detects the state of each step and proposes the next one:</p>
+    <ul>
+      <li>back up the configuration, create a rescue account, leave the Active Directory domain;</li>
+      <li>install and configure authd and its Entra broker;</li>
+      <li>take over the local account at the next boot, with automatic rollback if anything goes wrong;</li>
+      <li>check the result.</li>
+    </ul>
+    <p>Administrator actions go through polkit; nothing is stored apart from public identifiers.</p>
+    <p xml:lang="fr">Sésame connecte un poste Ubuntu 24.04 ou plus récent à Microsoft Entra ID grâce à authd, puis fait reprendre au compte Entra le compte local existant : même identifiant, même dossier personnel, mêmes groupes, même crontab.</p>
+    <p xml:lang="fr">L’assistant détecte l’état de chaque étape et propose la suivante :</p>
+    <ul xml:lang="fr">
+      <li>sauvegarder la configuration, créer un compte de secours, quitter le domaine Active Directory ;</li>
+      <li>installer et configurer authd et son module Entra ;</li>
+      <li>reprendre le compte local au prochain démarrage, avec annulation automatique en cas de problème ;</li>
+      <li>vérifier le résultat.</li>
+    </ul>
+    <p xml:lang="fr">Les actions d’administration passent par polkit ; rien n’est conservé hormis des identifiants publics.</p>
+  </description>
+  <launchable type="desktop-id">io.github.mawena.Sesame.desktop</launchable>
+  <provides>
+    <binary>sesame</binary>
+    <binary>sesame-assistant</binary>
+  </provides>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://mawena.github.io/sesame/captures/apercu.png</image>
+      <caption>L’assistant : compte Entra, étapes et journal</caption>
+    </screenshot>
+  </screenshots>
+  <url type="homepage">https://mawena.github.io/sesame/</url>
+  <url type="bugtracker">https://github.com/mawena/sesame/issues</url>
+  <content_rating type="oars-1.1"/>
+  <categories>
+    <category>Settings</category>
+    <category>System</category>
+  </categories>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+    <control>touch</control>
+  </supports>
+  <releases>
+    <release version="1.0.0" date="2026-11-11">
+      <description>
+        <p>Première version : assistant graphique et ligne de commande, assistant root, reprise du compte au démarrage.</p>
+      </description>
+    </release>
+  </releases>
+</component>

@@ -1,0 +1,110 @@
+"""Réglages : validation, sesame.conf, valeurs par défaut, broker.conf."""
+from sesame import chemins, config as cfg
+from tests.commun import A, CLIENT, H, LOCATAIRE, N, U, Base
+
+
+class TestValidation(Base):
+    def test_guid(self):
+        self.assertTrue(cfg.valider_guid(LOCATAIRE))
+        self.assertTrue(cfg.valider_guid("AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"))
+        for faux in ("", None, "1234", LOCATAIRE + "0", LOCATAIRE[:-1] + "g", " " + LOCATAIRE, LOCATAIRE.replace("-", "")):
+            self.assertFalse(cfg.valider_guid(faux), faux)
+
+    def test_upn(self):
+        for bon in (N, "A.B@exemple.fr", "a_b-c@sous.domaine.org", " x@y.com "):
+            self.assertTrue(cfg.valider_upn(bon), bon)
+        for faux in ("", None, "sans-arobase", "a@b", "a b@c.com", "a@@c.com", "@c.com", "a@c.", "a;b@c.com"):
+            self.assertFalse(cfg.valider_upn(faux), faux)
+
+    def test_normaliser_upn(self):
+        self.assertEqual(cfg.normaliser_upn("  Charles.Gamligo@CofinaCorp.com "), N)
+
+    def test_valider_nom(self):
+        self.assertTrue(cfg.valider_nom("secours"))
+        self.assertTrue(cfg.valider_nom("charles-gamligo"))
+        for faux in ("", "Majuscule", "a b", "1abc", "a;b", "x" * 40):
+            self.assertFalse(cfg.valider_nom(faux), faux)
+
+
+class TestFichier(Base):
+    def test_ecrire_et_charger(self):
+        c = cfg.Config(LOCATAIRE, CLIENT, "Charles.Gamligo@Cofinacorp.com", A, U, U, H, "secours", ["sudo", "docker"])
+        cfg.ecrire(self.m, c)
+        texte = self.lire(chemins.SESAME_CONF)
+        for ligne in (f"locataire = {LOCATAIRE}", f"client = {CLIENT}", f"compte = {N}", f"compte = {A}", "uid = 1000",
+                      f"dossier = {H}", "secours = secours", "supplementaires = sudo,docker", "[entra]", "[local]",
+                      "[groupes]"):
+            self.assertIn(ligne, texte)
+        self.assertEqual(oct(self.m.chemin(chemins.SESAME_CONF).stat().st_mode & 0o777), "0o644")
+        charge = cfg.charger(self.m)
+        self.assertEqual(charge.compte, N)
+        self.assertEqual((charge.uid, charge.gid, charge.dossier), (U, U, H))
+        self.assertEqual(charge.groupes, ["sudo", "docker"])
+
+    def test_charger_commentaires_en_fin_de_ligne(self):
+        self.ecrire(chemins.SESAME_CONF, f"[entra]\nlocataire = {LOCATAIRE}   ; ID\ncompte = X@Y.com\n[groupes]\n"
+                                         "supplementaires = a, b ,\n")
+        c = cfg.charger(self.m)
+        self.assertEqual(c.locataire, LOCATAIRE)
+        self.assertEqual(c.compte, "x@y.com")
+        self.assertEqual(c.groupes, ["a", "b"])
+        self.assertEqual(c.secours, "secours")
+
+    def test_charger_absent_ou_casse(self):
+        self.assertIsNone(cfg.charger(self.m))
+        self.ecrire(chemins.SESAME_CONF, "pas un ini")
+        self.assertIsNone(cfg.charger(self.m))
+
+
+class TestBroker(Base):
+    def test_texte_broker(self):
+        c = cfg.Config(LOCATAIRE, CLIENT, N.upper(), A, U, U, H, "secours", ["sudo", "docker"])
+        self.assertEqual(cfg.texte_broker(c), (
+            "# Module Microsoft Entra ID pour authd — écrit par Sésame. Original : broker.conf.origine\n"
+            "[oidc]\n"
+            f"issuer = https://login.microsoftonline.com/{LOCATAIRE}/v2.0\n"
+            f"client_id = {CLIENT}\n\n"
+            "[users]\nallowed_users = OWNER\n"
+            f"owner = {N}\n"
+            "home_base_dir = /home\nowner_extra_groups = sudo,docker\n\n"
+            "[msentraid]\nregister_device = false\n\n"
+            "[flows]\nentra_auth = false\n"))
+
+
+class TestDefauts(Base):
+    def setUp(self):
+        super().setUp()
+        self.peupler()
+
+    def test_compte_courant(self):
+        self.m.uid = U
+        d = cfg.defauts(self.m)
+        self.assertEqual((d.compte_local, d.uid, d.gid, d.dossier), (A, U, U, H))
+        self.assertEqual(d.secours, "secours")
+
+    def test_groupes_supplementaires_existants(self):
+        self.m.uid = U
+        d = cfg.defauts(self.m)
+        self.assertEqual(sorted(d.groupes), ["docker", "lpadmin", "sudo"])
+        self.assertNotIn(A, d.groupes)
+
+    def test_pkexec_uid_et_sudo_user(self):
+        self.m.env["PKEXEC_UID"] = str(U)
+        self.assertEqual(cfg.defauts(self.m).compte_local, A)
+        self.m.env = {"SUDO_USER": A}
+        self.assertEqual(cfg.defauts(self.m).compte_local, A)
+
+    def test_repli_premier_compte_ordinaire(self):
+        d = cfg.defauts(self.m)  # l'UID 4242 n'existe pas
+        self.assertEqual(d.compte_local, A)  # root (UID 0) et secours (1001) : A a le plus petit UID >= 1000
+
+    def test_aucun_compte(self):
+        self.ecrire("/etc/passwd", "root:x:0:0::/root:/bin/bash\n")
+        self.assertEqual(cfg.defauts(self.m), cfg.Config())
+
+    def test_upn_suggere_avec_domaine(self):
+        self.m.domaines_joints = ["cofinacorp.com"]
+        self.assertEqual(cfg.defauts(self.m).compte, "charles.gamligo@cofinacorp.com")
+
+    def test_upn_vide_sans_domaine(self):
+        self.assertEqual(cfg.defauts(self.m).compte, "")

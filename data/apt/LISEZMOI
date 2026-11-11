@@ -1,0 +1,9 @@
+Dépôt APT de Sésame : https://mawena.github.io/sesame/apt (branche gh-pages).
+
+sesame.gpg      clé publique de signature (format binaire, sans armure)
+sesame.sources  source deb822 installée dans /etc/apt/sources.list.d/
+
+Clé de signature : « Sésame APT (mawena) <57989130+mawena@users.noreply.github.com> »
+Empreinte : EC3E F563 FE1B 133E 5575  3127 1089 B937 B4BD A7F1
+ed25519, sans phrase de passe, créée le 11/11/2026, valable 3 ans.
+Publication : scripts/publier-apt.sh dist/sesame_<version>_all.deb (ou make apt).

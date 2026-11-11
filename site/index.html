@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sésame, votre compte Entra sur Ubuntu</title>
+<meta name="description" content="Sésame connecte un poste Ubuntu 24.04+ à Microsoft Entra ID avec authd, puis fait reprendre au compte Entra votre compte local : même UID, même dossier, mêmes groupes. Installation par apt.">
+<meta name="theme-color" content="#f7f1e6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#17130e" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="icone.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,600;0,700;1,600&family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="entete">
+  <a class="marque" href="./"><img src="icone.svg" alt="" width="32" height="32"><span>Sésame</span></a>
+  <nav aria-label="Liens du projet">
+    <a href="#installer">Installer</a>
+    <a href="#etapes">Les étapes</a>
+    <a href="#securite">Sécurité</a>
+    <a href="https://github.com/mawena/sesame/releases/latest">Dernière version</a>
+    <a href="https://github.com/mawena/sesame">Code source</a>
+  </nav>
+</header>
+
+<main>
+  <section class="ouverture" aria-labelledby="titre">
+    <div>
+      <h1 id="titre">Sésame<em>,</em></h1>
+      <p class="chapeau">votre compte Microsoft Entra ouvre votre poste Ubuntu, avec votre bureau, vos fichiers et vos groupes comme avant.</p>
+    </div>
+    <figure class="apercu">
+      <img src="captures/apercu.png" alt="L'assistant Sésame : les étapes de la connexion Entra, chacune avec son état et son bouton Lancer" width="910" height="750">
+    </figure>
+    <div class="installation-courte">
+      <p>Sur Ubuntu 24.04 ou plus récent :</p>
+      <div class="commande">
+        <pre><code id="cmd-courte">curl -fsSL https://mawena.github.io/sesame/installer.sh | sudo sh</code></pre>
+        <button type="button" class="copier" data-cible="cmd-courte" hidden>Copier</button>
+      </div>
+      <p class="nuance">Le script ajoute le dépôt APT signé puis installe le paquet ; <a href="#installer">les trois commandes qu'il lance</a> sont détaillées plus bas. Lancez ensuite « Sésame » depuis les applications, ou <code>sesame-assistant</code>.</p>
+    </div>
+  </section>
+
+  <section class="pourquoi" aria-labelledby="pourquoi-titre">
+    <h2 id="pourquoi-titre">À quoi ça sert</h2>
+    <p>Avec <a href="https://ubuntu.com/docs/authd/stable-docs/">authd</a> et son module Microsoft Entra ID, on ouvre une session Ubuntu avec son compte de l'entreprise. Mais ce compte arrive avec un autre identifiant, un autre dossier personnel et aucun groupe : le poste de tous les jours disparaît.</p>
+    <p>Sésame fait le trajet complet. Il installe et configure authd, puis le compte Entra <strong>reprend le compte local existant</strong> : même UID, même dossier personnel, mêmes groupes (<code>sudo</code>, <code>docker</code>…), même crontab. Vous retrouvez votre bureau, mais vous vous y connectez avec votre compte Entra. Un assistant graphique détecte l'état de chaque étape et propose la suivante ; la commande <code>sesame</code> fait la même chose dans un terminal.</p>
+  </section>
+
+  <section class="etapes" id="etapes" aria-labelledby="etapes-titre">
+    <h2 id="etapes-titre">Quatre moments, dans l'ordre</h2>
+    <ol class="liste-etapes">
+      <li>
+        <h3>Le portail Entra</h3>
+        <p>Un administrateur du locataire crée une application « Ubuntu authd » (client public, locataire unique, permissions Microsoft Graph, consentement administrateur). Sésame explique chaque clic et ouvre le portail. Il vous faut deux identifiants : l'ID du locataire et l'ID de l'application, qui ne sont pas des secrets.</p>
+      </li>
+      <li>
+        <h3>L'assistant</h3>
+        <p>Sauvegarde, compte de secours, sortie d'un éventuel domaine Active Directory, installation d'authd et de son module, configuration. Chaque étape détecte si elle est déjà faite : on peut tout relancer sans risque.</p>
+      </li>
+      <li>
+        <h3>La première connexion</h3>
+        <p>À l'écran d'accueil, « Non listé ? », votre adresse Entra, « Microsoft Entra ID », puis le code à saisir sur votre téléphone ou votre ordinateur. Vous choisissez un mot de passe local, utilisé ensuite hors ligne.</p>
+      </li>
+      <li>
+        <h3>La reprise au démarrage</h3>
+        <p>Un service systemd tourne avant l'écran de connexion, quand aucun programme n'utilise l'un des deux comptes : le compte Entra prend l'UID, le dossier, les groupes et la crontab du compte local. Après le redémarrage, vous vous connectez avec le compte Entra, et Sésame vérifie que tout y est.</p>
+      </li>
+    </ol>
+  </section>
+
+  <section class="securite" id="securite" aria-labelledby="securite-titre">
+    <h2 id="securite-titre">On peut toujours revenir</h2>
+    <p>Sésame ne touche à rien sans filet.</p>
+    <div class="garde">
+      <div>
+        <h3>Sauvegardes</h3>
+        <p>Avant chaque étape qui modifie quelque chose, la configuration des comptes est copiée dans <code>/var/lib/sesame/sauvegardes</code>. Elles sont gardées, même si vous désinstallez le paquet.</p>
+      </div>
+      <div>
+        <h3>Compte de secours</h3>
+        <p>Un compte administrateur local de dépannage, avec un mot de passe que vous choisissez. Il n'est jamais écrit sur le disque par Sésame.</p>
+      </div>
+      <div>
+        <h3>Annulation</h3>
+        <p>Si la reprise échoue, elle s'annule toute seule. Après coup, <code>sesame annuler-reprise</code> remet le compte local, et <code>sesame desactiver</code> coupe la connexion Entra sans rien désinstaller.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="installer" id="installer" aria-labelledby="installer-titre">
+    <h2 id="installer-titre">Installer</h2>
+    <p>Pour Ubuntu Desktop 24.04 ou plus récent (GNOME, GDM). Il faut des droits d'administration sur le poste, et sur le locataire Entra pour créer l'application. Une fois le dépôt ajouté, <code>sudo apt upgrade</code> apporte les nouvelles versions.</p>
+    <ol class="pas">
+      <li>
+        <p>Ajouter la clé qui signe le dépôt :</p>
+        <div class="commande"><pre><code id="cmd-cle">sudo curl -fsSLo /usr/share/keyrings/sesame.gpg https://mawena.github.io/sesame/apt/sesame.gpg</code></pre><button type="button" class="copier" data-cible="cmd-cle" hidden>Copier</button></div>
+      </li>
+      <li>
+        <p>Ajouter le dépôt :</p>
+        <div class="commande"><pre><code id="cmd-source">sudo curl -fsSLo /etc/apt/sources.list.d/sesame.sources https://mawena.github.io/sesame/apt/sesame.sources</code></pre><button type="button" class="copier" data-cible="cmd-source" hidden>Copier</button></div>
+      </li>
+      <li>
+        <p>Installer :</p>
+        <div class="commande"><pre><code id="cmd-installer">sudo apt update && sudo apt install sesame</code></pre><button type="button" class="copier" data-cible="cmd-installer" hidden>Copier</button></div>
+      </li>
+      <li>
+        <p>Voir où en est le poste :</p>
+        <div class="commande"><pre><code id="cmd-etat">sesame</code></pre><button type="button" class="copier" data-cible="cmd-etat" hidden>Copier</button></div>
+      </li>
+    </ol>
+    <p>Sans le dépôt : téléchargez le paquet <code>.deb</code> et sa somme de contrôle sur la page de la <a href="https://github.com/mawena/sesame/releases/latest">dernière version</a>, puis <code>sudo apt install ./sesame_*_all.deb</code>.</p>
+    <p class="liens">
+      <a href="https://github.com/mawena/sesame">Code source et documentation</a>
+      <a href="https://github.com/mawena/sesame/releases">Toutes les versions</a>
+      <a href="https://github.com/mawena/sesame/issues">Signaler un problème</a>
+    </p>
+  </section>
+</main>
+
+<footer class="pied">
+  <p>Sésame est un logiciel libre sous licence MIT, écrit par <a href="https://github.com/mawena">mawena</a>. Il s'appuie sur <a href="https://ubuntu.com/identity/authd">authd</a> de Canonical ; il n'est pas affilié à Microsoft ni à Canonical.</p>
+  <p>Clé du dépôt APT : <code>EC3E F563 FE1B 133E 5575 3127 1089 B937 B4BD A7F1</code></p>
+</footer>
+
+<script src="sesame.js" defer></script>
+</body>
+</html>

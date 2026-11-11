@@ -1,0 +1,49 @@
+.TH SESAME\-ASSISTANT 1 "11 novembre 2026" "sesame 1.0.0" "Commandes de l'utilisateur"
+.SH NOM
+sesame\-assistant \- assistant graphique de Sésame (GTK 4 et libadwaita)
+.SH SYNOPSIS
+.B sesame\-assistant
+.SH DESCRIPTION
+.B sesame\-assistant
+ouvre la fenêtre de Sésame, qui connecte le poste Ubuntu à Microsoft Entra ID par authd, puis fait reprendre au compte
+Entra le compte local existant (même identifiant, même dossier personnel, mêmes groupes, même crontab).
+.PP
+La fenêtre montre, de haut en bas : un bandeau qui annonce l'étape suivante (ou le résultat de la dernière reprise du
+compte) ; le groupe « Compte Microsoft Entra » (ID du locataire, ID client, compte Entra, compte local, vérifiés en
+direct) avec un guide pas à pas de la création de l'application dans le portail Entra ; le groupe « Étapes »
+(sauvegarde, compte de secours, sortie du domaine Active Directory, installation d'authd, configuration, première
+connexion, reprise du compte, vérification), chacune avec son statut et un bouton « Lancer » ou « Refaire » ; enfin le
+journal de l'assistant root. Le menu propose le guide du portail, la désactivation de la connexion Entra, l'annulation
+de la reprise et la boîte « À propos ».
+.PP
+Chaque étape détecte si elle est déjà faite : on peut les relancer sans risque. La reprise du compte se fait de
+préférence au prochain démarrage, avant l'écran de connexion.
+.PP
+L'assistant tourne sous l'identité de l'utilisateur et ne modifie rien lui\-même. Les actions d'administrateur passent
+par
+.BR pkexec (1)
+et
+.BR sesame\-racine ,
+sous la politique polkit \fBio.github.mawena.sesame.racine\fR : le mot de passe est demandé dans la fenêtre
+d'authentification d'Ubuntu. Si elle est annulée, l'assistant affiche « Authentification annulée ». Une seule action
+tourne à la fois, et la fenêtre ne se bloque jamais. Le mot de passe du compte de secours passe par l'entrée standard de
+l'assistant root et n'est jamais écrit.
+.PP
+Il faut PyGObject, GTK 4 et libadwaita 1.5 ou plus (paquets recommandés python3\-gi, gir1.2\-gtk\-4.0 et
+gir1.2\-adw\-1) ; s'il en manque, le programme dit quel paquet installer.
+.SH FICHIERS
+.TP
+.I /etc/sesame/sesame.conf
+Réglages écrits par l'étape « Configurer la connexion Entra ».
+.TP
+.I /var/lib/sesame/etat.json
+Ce que Sésame a fait et quand (lisible sans droits particuliers).
+.TP
+.I /var/lib/sesame/derniere-reprise.json
+Résultat de la dernière reprise du compte, affiché dans le bandeau.
+.SH VOIR AUSSI
+.BR sesame (1),
+.BR sesame (8),
+.BR pkexec (1)
+.SH AUTEUR
+mawena. Licence MIT.
