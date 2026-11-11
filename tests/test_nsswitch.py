@@ -31,24 +31,24 @@ class TestNsswitch(unittest.TestCase):
         t = "passwd: files sss-extra mysss\n"
         self.assertEqual(ns.retirer_service(t, ns.BASES_SSS, "sss"), t)
 
-    def test_ajout_d_authd(self):
+    def test_ajout_d_un_service(self):
         t = ns.ajouter_service("passwd: files systemd\ngroup: files\nshadow: files\nhosts: files dns\n",
-                               ns.BASES_AUTHD, "authd")
-        self.assertEqual(t, "passwd: files systemd authd\ngroup: files authd\nshadow: files authd\nhosts: files dns\n")
+                               ns.BASES_HIMMELBLAU, "himmelblau")
+        self.assertEqual(t, "passwd: files systemd himmelblau\ngroup: files himmelblau\nshadow: files\nhosts: files dns\n")
 
     def test_ajout_idempotent(self):
-        une = ns.ajouter_service(ORIGINE, ns.BASES_AUTHD, "authd")
-        self.assertEqual(ns.ajouter_service(une, ns.BASES_AUTHD, "authd"), une)
-        self.assertEqual(une.count("authd"), 3)
+        une = ns.ajouter_service(ORIGINE, ns.BASES_HIMMELBLAU, "himmelblau")
+        self.assertEqual(ns.ajouter_service(une, ns.BASES_HIMMELBLAU, "himmelblau"), une)
+        self.assertEqual(une.count("himmelblau"), 2)
 
     def test_ajout_avant_commentaire(self):
-        t = ns.ajouter_service("passwd: files # note\n", ns.BASES_AUTHD, "authd")
-        self.assertEqual(t, "passwd: files authd # note\n")
+        t = ns.ajouter_service("passwd: files # note\n", ns.BASES_HIMMELBLAU, "himmelblau")
+        self.assertEqual(t, "passwd: files himmelblau # note\n")
 
     def test_manque_et_service_de(self):
-        t = "passwd: files authd\ngroup: files\n"
-        self.assertEqual(ns.manque(t, "authd"), ["group"])
-        self.assertEqual(ns.service_de(t, "passwd"), ["files", "authd"])
+        t = "passwd: files himmelblau\ngroup: files\n"
+        self.assertEqual(ns.manque(t, "himmelblau"), ["group"])
+        self.assertEqual(ns.service_de(t, "passwd"), ["files", "himmelblau"])
         self.assertEqual(ns.service_de(t, "hosts"), [])
 
     def test_contient(self):

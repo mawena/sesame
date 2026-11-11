@@ -4,8 +4,8 @@ import re
 from . import chemins, etat
 
 FIXES = ["/etc/passwd", "/etc/shadow", "/etc/group", "/etc/gshadow", "/etc/subuid", "/etc/subgid",
-         "/etc/nsswitch.conf", "/etc/login.defs", "/etc/krb5.conf", "/etc/sssd", "/etc/pam.d", "/etc/gdm3",
-         chemins.VMWARE_AUTORISATION, chemins.ACCOUNTSSERVICE]
+         "/etc/nsswitch.conf", "/etc/login.defs", "/etc/krb5.conf", "/etc/sssd", chemins.PAM_D, "/etc/gdm3",
+         chemins.HIMMELBLAU_D, chemins.HOSTS, chemins.HOSTNAME]
 
 
 def a_sauvegarder(systeme):

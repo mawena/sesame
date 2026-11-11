@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Capture de l'assistant graphique : docs/captures/apercu.png (720 × 1040 : toutes les étapes visibles).
+"""Capture de l'assistant graphique : page « Rejoindre » avec des valeurs d'exemple, dans docs/captures/apercu.png (640 × 760).
 
 Construit la fenêtre avec un faux cœur (état de démonstration), la fait dessiner hors écran dans un Xvfb quand il
 est disponible (sinon sur l'affichage courant) et enregistre le rendu en PNG. Aucune action réelle n'est lancée.
@@ -9,7 +9,7 @@ import os
 import shutil
 import sys
 import types
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -28,36 +28,26 @@ gi.require_version('Adw', '1')
 gi.require_version('Graphene', '1.0')
 from gi.repository import Adw, Gdk, GLib, Graphene, Gtk
 
-LARGEUR, HAUTEUR = 720, 1040  # un peu plus haut que la fenêtre par défaut, pour montrer toutes les étapes
+LARGEUR, HAUTEUR = 640, 760
 
 ETATS = [
-    ('sauvegarde', 'Sauvegarder la configuration', 'fait', 'Sauvegarde du 11/11/2026 à 09:12', 'sauvegarde',
-     'Copie les fichiers de comptes et de connexion avant toute modification.'),
-    ('secours', 'Créer le compte de secours', 'fait', 'Le compte « secours » existe et est dans sudo', 'secours',
-     'Un compte administrateur local de dépannage.'),
-    ('quitter_ad', 'Quitter le domaine Active Directory', 'fait', 'Le poste a quitté le domaine cofina.local', 'quitter-ad',
-     'Retire le poste de l’ancien domaine.'),
-    ('installer', 'Installer authd et le module Entra', 'fait', 'authd 0.7.1 et le module Entra 0.5.0 sont installés.', 'installer',
-     'Installe authd et le module Microsoft Entra.'),
-    ('configurer', 'Configurer la connexion Entra', 'a_faire', 'Renseignez les champs ci-dessus, puis lancez', 'configurer',
-     'Écrit la configuration d’authd pour votre annuaire.'),
-    ('premiere_connexion', 'Première connexion par Entra', 'bloquee', 'Il faut d’abord : Configurer la connexion Entra.',
-     None, 'Connectez-vous une fois avec votre compte Entra.'),
-    ('reprise', 'Reprendre le compte local', 'bloquee', 'Il faut d’abord : Première connexion par Entra.', 'reprise',
-     'Le compte Entra remplace le compte local, avec le même dossier personnel.'),
-    ('verification', 'Vérifier', 'bloquee', 'Il faut d’abord : Reprendre le compte local.', None,
-     'Contrôle que tout est en place.'),
+    ('sauvegarde', 'Sauvegarder la configuration', 'a_faire', '', 'sauvegarde', 'Copie les fichiers de comptes et de connexion.'),
+    ('secours', 'Créer le compte de secours', 'a_faire', '', 'secours', 'Un compte administrateur local de dépannage.'),
+    ('nom_machine', 'Nommer la machine', 'a_faire', '', 'nom-machine', 'Donne son nom au poste.'),
+    ('quitter_ad', 'Quitter le domaine Active Directory', 'sans_objet', 'Aucun domaine', 'quitter-ad', 'Retire le poste de l’ancien domaine.'),
+    ('outils', 'Installer les outils de compilation', 'a_faire', '', 'outils', 'Installe podman, git et make.'),
+    ('compiler', 'Compiler Himmelblau', 'a_faire', '', None, 'Compile Himmelblau sur ce poste.'),
+    ('installer', 'Installer Himmelblau', 'a_faire', '', 'installer', 'Installe Himmelblau.'),
+    ('configurer', 'Relier votre compte à Entra', 'a_faire', '', 'configurer', 'Relie votre compte local à Entra.'),
+    ('premiere_connexion', 'Première connexion', 'a_faire', '', 'noter-premiere-connexion', 'Connectez-vous une fois avec Entra.'),
 ]
 
 
 @dataclass
 class Config:
-    locataire: str = '3f2a9c1e-7b54-4d08-9a6e-1c5d82f04b37'
-    client: str = 'a81d6e90-2c4f-47b3-8e15-d9f0637ab2c4'
-    compte: str = 'prenom.nom@exemple.com'
-    compte_local: str = 'prenom-nom'
+    compte: str = ''
+    nom_machine: str = ''
     secours: str = 'secours'
-    groupes: list = field(default_factory=lambda: ['sudo', 'lpadmin'])
 
 
 def installer_faux_coeur():
@@ -65,16 +55,15 @@ def installer_faux_coeur():
         m = types.ModuleType(nom)
         m.__dict__.update(attributs)
         sys.modules[nom] = m
-    etapes = [types.SimpleNamespace(id=i, titre=t, explication=x, action_racine=a) for i, t, _, _, a, x in ETATS]
     module('sesame.systeme', Systeme=lambda *a, **k: object())
     module('sesame.config', charger=lambda s: Config(), defauts=lambda s: Config(),
-           valider_guid=lambda t: len(t) == 36, valider_upn=lambda t: '@' in t)
-    module('sesame.etapes', ETAPES=etapes, derniere_reprise=lambda s: None, etape_suivante=lambda e: 'configurer',
+           valider_nom_machine=lambda t: bool(t) and len(t) <= 15, valider_upn=lambda t: '@' in t)
+    module('sesame.etapes', etape_suivante=lambda e: 'sauvegarde',
            lire_etat=lambda s: [{'id': i, 'titre': t, 'statut': st, 'detail': d, 'explication': x, 'action': a}
                                 for i, t, st, d, a, x in ETATS])
     module('sesame.verification', controler=lambda s, c: [])
-    module('sesame.guide', PORTAIL=[], URL_PORTAIL='https://entra.microsoft.com')
-    module('sesame.version', VERSION='1.0.0')
+    module('sesame.version', VERSION='2.0.0')
+    module('sesame.compilation', dossier_par_defaut=lambda: '/tmp/himmelblau', a_jour=lambda d, l: True)
 
 
 def main():
@@ -107,8 +96,9 @@ def main():
     if not fenetre.etats:
         print('L’état de démonstration n’a pas été chargé.', file=sys.stderr)
         return 1
+    fenetre.champs['compte'].set_text('prenom.nom@exemple.com')
+    fenetre.champs['nom_machine'].set_text('LPCFNTG-00123')
     fenetre.set_focus(None)
-    fenetre.expandeur.set_expanded(False)
     tourner(0.5)
     paintable = Gtk.WidgetPaintable.new(fenetre)
     largeur, hauteur = fenetre.get_width(), fenetre.get_height()

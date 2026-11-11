@@ -3,7 +3,6 @@ bin/sesame-assistant usr/bin
 libexec/sesame-racine usr/libexec/sesame
 sesame/*.py usr/share/sesame/sesame
 sesame/interface/*.py usr/share/sesame/sesame/interface
-data/systemd/sesame-reprise.service usr/lib/systemd/system
 data/polkit/io.github.mawena.sesame.policy usr/share/polkit-1/actions
 data/applications/io.github.mawena.Sesame.desktop usr/share/applications
 data/metainfo/io.github.mawena.Sesame.metainfo.xml usr/share/metainfo

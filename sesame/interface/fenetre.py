@@ -1,6 +1,5 @@
-"""Fenêtre principale de l'assistant : compte Entra, étapes, journal."""
+"""Fenêtre principale de l'assistant : rejoindre Microsoft Entra ID (adresse pro, nom de la machine), compilation et installation d'Himmelblau."""
 import getpass
-import types
 
 import gi
 
@@ -10,9 +9,7 @@ from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from . import dialogues, donnees, lanceur
 
-CHAMPS = (('locataire', 'ID du locataire (annuaire)'), ('client', 'ID client (application)'),
-          ('compte', 'Compte Entra (UPN)'), ('compte_local', 'Compte local à reprendre'))
-CONNEXIONS = (('mot-de-passe', 'Mot de passe Entra'), ('code', 'Code sur le téléphone'))
+CODE_ANNULE = 'Authentification annulée : rien n’a été modifié. Vous pouvez réessayer.'
 
 
 class Rangee:
@@ -57,21 +54,62 @@ class Rangee:
         self.bouton.set_visible(not oui and donnees.libelle_bouton(self.statut) is not None)
 
 
+class LigneProgression:
+    """Une ligne de la progression : spinner (en cours), coche (fait) ou croix (erreur)."""
+
+    def __init__(self, texte):
+        self.etat = 'en_cours'
+        self.row = Adw.ActionRow(title=GLib.markup_escape_text(texte), title_lines=0)
+        self.spinner = Gtk.Spinner(spinning=True, valign=Gtk.Align.CENTER)
+        self.icone = Gtk.Image(visible=False)
+        self.row.add_prefix(self.spinner)
+        self.row.add_prefix(self.icone)
+
+    def definir(self, etat):
+        self.etat = etat
+        self.spinner.set_spinning(etat == 'en_cours')
+        self.spinner.set_visible(etat == 'en_cours')
+        self.icone.set_visible(etat != 'en_cours')
+        for c in ('success', 'error'):
+            self.icone.remove_css_class(c)
+        if etat == 'fait':
+            self.icone.set_from_icon_name('emblem-ok-symbolic')
+            self.icone.add_css_class('success')
+        elif etat == 'erreur':
+            self.icone.set_from_icon_name('dialog-error-symbolic')
+            self.icone.add_css_class('error')
+
+
+def _bouton_pill(libelle, suggere=True):
+    b = Gtk.Button(label=libelle, halign=Gtk.Align.CENTER)
+    b.add_css_class('pill')
+    if suggere:
+        b.add_css_class('suggested-action')
+    return b
+
+
 class Fenetre(Adw.ApplicationWindow):
     def __init__(self, application, coeur=None):
-        super().__init__(application=application, title='Sésame', default_width=720, default_height=820)
+        super().__init__(application=application, title='Sésame', default_width=640, default_height=760)
         self.set_size_request(360, 400)
         self.coeur = coeur or donnees.charger_coeur()
         self.systeme = self.coeur.systeme.Systeme()
         self.lanceur = lanceur.Lanceur()
         self.etats = []
         self.config = None
-        self.reprise_resultat = None
-        self.reprise_masquee = False
         self.rangees = {}
         self.champs = {}
+        self.lignes = []
         self.champs_remplis = False
         self.action_en_cours = None
+        self.rejoindre_en_cours = False
+        self.page_figee = False      # progression, page finale ou erreur affichée : l'état relu ne change plus de page
+        self.dernier_rejoindre = None  # (compte, nom) du dernier lancement, pour la page finale
+        self.arguments_rejoindre = []
+        self.compilation_requise = False
+        self.suite_compilation = None
+        self.en_compilation = False
+        self.mise_a_jour_proposee = False
         self._lecture = False
         self._relire = False
         self._construire()
@@ -81,60 +119,102 @@ class Fenetre(Adw.ApplicationWindow):
 
     def _construire(self):
         self.toasts = Adw.ToastOverlay()
+        self.navigation = Adw.NavigationView()
         vue = Adw.ToolbarView()
         entete = Adw.HeaderBar()
-        entete.set_title_widget(Adw.WindowTitle(title='Sésame', subtitle='Connexion Microsoft Entra ID'))
         self.bouton_actualiser = Gtk.Button(icon_name='view-refresh-symbolic', tooltip_text='Actualiser')
         self.bouton_actualiser.connect('clicked', lambda *_: self.actualiser())
         entete.pack_start(self.bouton_actualiser)
         menu = Gio.Menu()
-        menu.append('Guide du portail Entra', 'win.guide')
+        menu.append('Détails', 'win.details')
+        menu.append('Vérifier', 'win.verifier')
+        menu.append('Mettre à jour Himmelblau', 'win.mettre-a-jour')
         menu.append('Désactiver la connexion Entra', 'win.desactiver')
-        menu.append('Annuler la reprise', 'win.annuler-reprise')
         a_propos = Gio.Menu()
         a_propos.append('À propos de Sésame', 'app.a-propos')
         menu.append_section(None, a_propos)
         entete.pack_end(Gtk.MenuButton(icon_name='open-menu-symbolic', menu_model=menu, tooltip_text='Menu principal',
                                        primary=True))
         vue.add_top_bar(entete)
-        self.bandeau = Adw.Banner(title='Lecture de l’état…', revealed=True)
-        self.bandeau.connect('button-clicked', self._masquer_reprise)
+        self.bandeau = Adw.Banner(title='Une nouvelle version stable de Himmelblau est disponible', revealed=False,
+                                  button_label='Mettre à jour')
+        self.bandeau.connect('button-clicked', lambda *_: self.mettre_a_jour())
         vue.add_top_bar(self.bandeau)
-
-        for nom, rappel in (('guide', lambda *_: self.ouvrir_guide()), ('desactiver', lambda *_: self.desactiver()),
-                            ('annuler-reprise', lambda *_: self.annuler_reprise())):
+        for nom, rappel in (('details', lambda *_: self.ouvrir_details()), ('verifier', lambda *_: self.verifier()),
+                            ('mettre-a-jour', lambda *_: self.mettre_a_jour()),
+                            ('desactiver', lambda *_: self.desactiver())):
             a = Gio.SimpleAction.new(nom, None)
             a.connect('activate', rappel)
             self.add_action(a)
 
-        page = Adw.PreferencesPage()
-        compte = Adw.PreferencesGroup(title='Compte Microsoft Entra',
-                                      description='Ces valeurs viennent du portail Entra. Ce ne sont pas des secrets.')
-        for cle, titre in CHAMPS:
-            champ = Adw.EntryRow(title=titre)
-            champ.connect('changed', self._champ_modifie, cle)
-            self.champs[cle] = champ
-            compte.add(champ)
-        self.connexion = Adw.ComboRow(title='Connexion', subtitle='À l’écran d’accueil ; le mot de passe Entra, c’est comme sur Windows',
-                                      model=Gtk.StringList.new([titre for _, titre in CONNEXIONS]))
-        compte.add(self.connexion)
-        guide = Adw.ActionRow(title='Créer l’application dans le portail Entra', activatable=True,
-                              subtitle='Pas à pas, avec un lien vers le portail')
-        guide.add_prefix(Gtk.Image.new_from_icon_name('help-about-symbolic'))
-        guide.add_suffix(Gtk.Image.new_from_icon_name('go-next-symbolic'))
-        guide.connect('activated', lambda *_: self.ouvrir_guide())
-        compte.add(guide)
-        page.add(compte)
+        self.pages = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, vhomogeneous=False)
+        self.pages.add_named(self._page_formulaire(), 'formulaire')
+        self.pages.add_named(self._page_progression(), 'progression')
+        self.pages.add_named(self._page_finale(), 'final')
+        self.pages.add_named(self._page_erreur(), 'erreur')
+        self.pages.add_named(self._page_relie(), 'relie')
+        self.pages.set_visible_child_name('formulaire')
+        vue.set_content(self.pages)
+        racine = Adw.NavigationPage(title='Sésame', child=vue, tag='principal')
+        self.navigation.add(racine)
+        self.navigation.add(self._page_details())
+        self.toasts.set_child(self.navigation)
+        self.set_content(self.toasts)
 
-        groupe = Adw.PreferencesGroup(title='Étapes', description='Chaque étape détecte si elle est déjà faite : on peut '
-                                      'les relancer sans risque.')
-        for etape in self.coeur.etapes.ETAPES:
-            r = Rangee(etape.id, etape.titre, getattr(etape, 'explication', '') or '', self.lancer_etape)
-            self.rangees[etape.id] = r
-            groupe.add(r.row)
-        page.add(groupe)
+    @staticmethod
+    def _defilante(contenu):
+        clamp = Adw.Clamp(maximum_size=520, tightening_threshold=420, margin_start=16, margin_end=16, margin_top=24,
+                          margin_bottom=24, child=contenu)
+        return Gtk.ScrolledWindow(child=clamp, hscrollbar_policy=Gtk.PolicyType.NEVER, vexpand=True)
 
-        journal = Adw.PreferencesGroup(title='Journal')
+    def _page_formulaire(self):
+        boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+        icone = Gtk.Image.new_from_icon_name(donnees.APPLICATION_ID)
+        icone.set_pixel_size(72)
+        titre = Gtk.Label(label='Rejoindre Microsoft Entra ID', wrap=True, justify=Gtk.Justification.CENTER)
+        titre.add_css_class('title-1')
+        intro = Gtk.Label(label='Comme sur un PC Windows : vous gardez votre compte, votre dossier personnel et vos '
+                          'réglages, et vous vous connectez avec votre adresse pro.', wrap=True,
+                          justify=Gtk.Justification.CENTER)
+        intro.add_css_class('dim-label')
+        boite.append(icone)
+        boite.append(titre)
+        boite.append(intro)
+        groupe = Adw.PreferencesGroup()
+        self.champs['compte'] = Adw.EntryRow(title='Adresse pro')
+        self.champs['nom_machine'] = Adw.EntryRow(title='Nom de la machine')
+        for cle in ('compte', 'nom_machine'):
+            self.champs[cle].connect('changed', self._champ_modifie, cle)
+            groupe.add(self.champs[cle])
+        self.champs['nom_machine'].set_text(donnees.nom_machine_actuel())
+        boite.append(groupe)
+        self.bouton_rejoindre = _bouton_pill('Rejoindre')
+        self.bouton_rejoindre.set_sensitive(False)
+        self.bouton_rejoindre.connect('clicked', lambda *_: self.rejoindre())
+        boite.append(self.bouton_rejoindre)
+        note = Gtk.Label(label='Une fenêtre vous demandera votre mot de passe Ubuntu actuel. Himmelblau est ensuite '
+                         'compilé sur ce poste (environ 30 à 60 minutes), puis installé.', wrap=True,
+                         justify=Gtk.Justification.CENTER)
+        note.add_css_class('caption')
+        note.add_css_class('dim-label')
+        boite.append(note)
+        return self._defilante(boite)
+
+    def _page_progression(self):
+        boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+        self.titre_progression = Gtk.Label(label='Configuration en cours…', wrap=True)
+        self.titre_progression.add_css_class('title-2')
+        boite.append(self.titre_progression)
+        self.liste = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
+        self.liste.add_css_class('boxed-list')
+        boite.append(self.liste)
+        self.note_compilation = Gtk.Label(wrap=True, xalign=0, visible=False,
+                                          label='Compilation de Himmelblau : environ 30 à 60 minutes. Vous pouvez fermer '
+                                                'Sésame, la compilation continue dans la file Gagarine.')
+        self.note_compilation.add_css_class('dim-label')
+        boite.append(self.note_compilation)
+
+        journal = Adw.PreferencesGroup()
         self.expandeur = Adw.ExpanderRow(title='Journal des actions', subtitle='Ce que fait l’assistant root')
         self.tampon = Gtk.TextBuffer()
         self.tampon.create_tag('etape', weight=Pango.Weight.BOLD)
@@ -145,15 +225,73 @@ class Fenetre(Adw.ApplicationWindow):
         self.tampon.create_tag('sortie')
         self.texte = Gtk.TextView(buffer=self.tampon, editable=False, cursor_visible=False, monospace=True,
                                   wrap_mode=Gtk.WrapMode.WORD_CHAR, top_margin=8, bottom_margin=8, left_margin=12, right_margin=12)
-        defilement = Gtk.ScrolledWindow(child=self.texte, min_content_height=220, hscrollbar_policy=Gtk.PolicyType.NEVER)
-        self.defilement = defilement
-        self.expandeur.add_row(Gtk.ListBoxRow(child=defilement, activatable=False, selectable=False))
+        self.defilement = Gtk.ScrolledWindow(child=self.texte, min_content_height=220, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        self.expandeur.add_row(Gtk.ListBoxRow(child=self.defilement, activatable=False, selectable=False))
         journal.add(self.expandeur)
-        page.add(journal)
+        boite.append(journal)
+        return self._defilante(boite)
 
+    def _page_status(self, icone, classe=None):
+        page = Adw.StatusPage(icon_name=icone, vexpand=True)
+        if classe:
+            page.add_css_class(classe)
+        return page
+
+    def _page_finale(self):
+        self.statut_final = self._page_status('emblem-ok-symbolic', 'success')
+        self.statut_final.set_title('Le poste est prêt')
+        self.bouton_deconnexion = _bouton_pill('Se déconnecter')
+        self.bouton_deconnexion.connect('clicked', lambda *_: lanceur.fermer_session(
+            lambda m: self.toast('Déconnexion impossible : ' + m)))
+        plus_tard = Gtk.Button(label='Plus tard', halign=Gtk.Align.CENTER)
+        plus_tard.add_css_class('flat')
+        plus_tard.connect('clicked', lambda *_: self._fin_affichage())
+        boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        boite.append(self.bouton_deconnexion)
+        boite.append(plus_tard)
+        self.statut_final.set_child(boite)
+        return self.statut_final
+
+    def _page_erreur(self):
+        self.statut_erreur = self._page_status('dialog-error-symbolic', 'error')
+        self.statut_erreur.set_title('Le poste n’a pas pu être relié')
+        self.bouton_reessayer = _bouton_pill('Réessayer')
+        self.bouton_reessayer.connect('clicked', lambda *_: self._fin_affichage())
+        boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        boite.append(self.bouton_reessayer)
+        journal = Gtk.Button(label='Voir le journal', halign=Gtk.Align.CENTER)
+        journal.add_css_class('flat')
+        journal.connect('clicked', lambda *_: self.pages.set_visible_child_name('progression'))
+        boite.append(journal)
+        self.statut_erreur.set_child(boite)
+        return self.statut_erreur
+
+    def _page_relie(self):
+        self.statut_relie = self._page_status('emblem-ok-symbolic', 'success')
+        self.statut_relie.set_title('Le poste est relié à Microsoft Entra ID')
+        self.bouton_premiere = _bouton_pill('J’ai fait ma première connexion')
+        self.bouton_premiere.connect('clicked', lambda *_: self.executer('noter-premiere-connexion', []))
+        self.bouton_deconnexion_relie = _bouton_pill('Se déconnecter', suggere=False)
+        self.bouton_deconnexion_relie.connect('clicked', lambda *_: lanceur.fermer_session(
+            lambda m: self.toast('Déconnexion impossible : ' + m)))
+        autre = Gtk.Button(label='Rejoindre avec une autre adresse', halign=Gtk.Align.CENTER)
+        autre.add_css_class('flat')
+        autre.connect('clicked', lambda *_: self.montrer_formulaire())
+        boite = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        for b in (self.bouton_premiere, self.bouton_deconnexion_relie, autre):
+            boite.append(b)
+        self.statut_relie.set_child(boite)
+        return self.statut_relie
+
+    def _page_details(self):
+        self.groupe_details = Adw.PreferencesGroup(title='Les étapes', description='Chaque étape détecte si elle est '
+                                                   'déjà faite : on peut la relancer sans risque.')
+        page = Adw.PreferencesPage()
+        page.add(self.groupe_details)
+        vue = Adw.ToolbarView()
+        vue.add_top_bar(Adw.HeaderBar())
         vue.set_content(page)
-        self.toasts.set_child(vue)
-        self.set_content(self.toasts)
+        return Adw.NavigationPage(title='Détails', child=vue, tag='details')
 
     # --- état ----------------------------------------------------------------------------------------------------
 
@@ -170,10 +308,9 @@ class Fenetre(Adw.ApplicationWindow):
 
         def lire():
             coeur, systeme = self.coeur, self.systeme
-            etats = coeur.etapes.lire_etat(systeme)
+            etats = donnees.lire_etats(coeur, systeme)
             config = coeur.config.charger(systeme) or coeur.config.defauts(systeme)
-            reprise = coeur.etapes.derniere_reprise(systeme)
-            return etats, config, reprise
+            return etats, config
 
         lanceur.en_arriere(lire, self._etat_lu)
 
@@ -181,13 +318,13 @@ class Fenetre(Adw.ApplicationWindow):
         self._lecture = False
         self.bouton_actualiser.set_sensitive(True)
         if erreur is not None:
-            self.bandeau.set_title('Impossible de lire l’état : %s' % erreur)
-            self.bandeau.set_button_label(None)
+            self.toast('Impossible de lire l’état : %s' % erreur)
         else:
-            self.etats, self.config, self.reprise_resultat = resultat
+            self.etats, self.config = resultat
             if not self.champs_remplis:
                 self._remplir_champs()
             self._afficher()
+            self.verifier_mise_a_jour()
         if self._relire:
             self._relire = False
             self.actualiser()
@@ -196,44 +333,43 @@ class Fenetre(Adw.ApplicationWindow):
     def _remplir_champs(self):
         self.champs_remplis = True
         c = self.config
-        for cle, valeur in (('locataire', c.locataire), ('client', c.client), ('compte', c.compte),
-                            ('compte_local', c.compte_local)):
-            self.champs[cle].set_text(valeur or '')
-        modes = [mode for mode, _ in CONNEXIONS]
-        mode = getattr(c, 'connexion', modes[0])
-        self.connexion.set_selected(modes.index(mode) if mode in modes else 0)
-
-    def valeur_connexion(self):
-        """Mode de connexion choisi : 'mot-de-passe' ou 'code'."""
-        i = self.connexion.get_selected()
-        return CONNEXIONS[i][0] if 0 <= i < len(CONNEXIONS) else CONNEXIONS[0][0]
+        compte = getattr(c, 'compte', '') or ''
+        if compte:
+            self.champs['compte'].set_text(compte)
+        nom = getattr(c, 'nom_machine', '') or ''
+        if nom:
+            self.champs['nom_machine'].set_text(nom)
 
     def _afficher(self):
-        par_id = {e['id']: e for e in self.etats}
-        for identifiant, rangee in self.rangees.items():
-            rangee.mettre_a_jour(par_id.get(identifiant, {'statut': 'inconnu'}))
-        self._maj_bandeau()
+        self._maj_details()
+        self._maj_relie()
+        self._maj_bouton_rejoindre()
+        if not self.page_figee and not self.lanceur.occupe:
+            self.pages.set_visible_child_name('relie' if donnees.deja_relie(self.etats) else 'formulaire')
         self._maj_boutons()
 
-    def _maj_bandeau(self):
-        r = self.reprise_resultat
-        if r and not self.reprise_masquee and 'demarrage' in str(r.get('mode', '')):
-            self.bandeau.set_title(('Reprise du compte réussie. ' if r.get('ok') else 'La reprise du compte a échoué. ')
-                                   + str(r.get('message', '')))
-            self.bandeau.set_button_label('Masquer')
-            return
-        suivante = self.coeur.etapes.etape_suivante(self.etats)
-        if suivante is None:
-            texte = 'Tout est en place'
-        else:
-            titre = next((e['titre'] for e in self.etats if e['id'] == suivante), suivante)
-            texte = 'Étape suivante : ' + titre
-        self.bandeau.set_title(texte)
-        self.bandeau.set_button_label(None)
+    def _maj_details(self):
+        for etat in self.etats:
+            r = self.rangees.get(etat['id'])
+            if r is None:
+                r = Rangee(etat['id'], etat.get('titre') or etat['id'], etat.get('explication') or '', self.lancer_etape)
+                self.rangees[etat['id']] = r
+                self.groupe_details.add(r.row)
+            r.mettre_a_jour(etat)
 
-    def _masquer_reprise(self, *_):
-        self.reprise_masquee = True
-        self._maj_bandeau()
+    def _maj_relie(self):
+        compte = (getattr(self.config, 'compte', '') or self.champs['compte'].get_text().strip()
+                  or 'votre adresse pro')
+        premiere = donnees.statut_etape(self.etats, 'premiere_connexion')
+        if premiere == 'fait':
+            self.statut_relie.set_description('Le compte de %s est relié à Microsoft Entra ID, et votre première '
+                                              'connexion est faite. Connectez-vous comme d’habitude.' % compte)
+        else:
+            self.statut_relie.set_description(
+                'Le compte de %s est relié à Microsoft Entra ID. Pour la première connexion :\n\n%s'
+                % (compte, dialogues.texte_premiere_connexion(compte)))
+        self.bouton_premiere.set_visible(premiere != 'fait')
+        self.bouton_deconnexion_relie.set_visible(premiere != 'fait')
 
     def _maj_boutons(self):
         occupe = self.lanceur.occupe
@@ -241,12 +377,14 @@ class Fenetre(Adw.ApplicationWindow):
             bloquee = r.statut == 'bloquee'
             r.bouton.set_sensitive(not occupe and not bloquee)
             if bloquee:
-                r.bouton.set_tooltip_text('Impossible pour l’instant : ' + (getattr(r, 'detail', '') or 'une étape précédente manque'))
+                r.bouton.set_tooltip_text('Impossible pour l’instant : ' + (r.detail or 'une étape précédente manque'))
             elif occupe:
                 r.bouton.set_tooltip_text('Une action est déjà en cours')
             else:
                 r.bouton.set_tooltip_text(None)
             r.occupee(occupe and identifiant == self.action_en_cours)
+        self.bouton_premiere.set_sensitive(not occupe)
+        self._maj_bouton_rejoindre()
 
     # --- champs --------------------------------------------------------------------------------------------------
 
@@ -258,64 +396,83 @@ class Fenetre(Adw.ApplicationWindow):
         else:
             champ.remove_css_class('error')
             champ.set_tooltip_text(None)
+        self._maj_bouton_rejoindre()
+
+    def champs_utiles(self):
+        return ('compte', 'nom_machine')
 
     def valeurs_champs(self):
-        """(valeurs normalisées, liste des champs manquants ou invalides)."""
+        """(valeurs normalisées, titres des champs manquants ou invalides)."""
+        titres = {'compte': 'Adresse pro', 'nom_machine': 'Nom de la machine'}
         valeurs, mauvais = {}, []
-        for cle, titre in CHAMPS:
+        for cle in self.champs_utiles():
             etat, norme, _ = donnees.valider_champ(self.coeur, cle, self.champs[cle].get_text())
             valeurs[cle] = norme
             if etat != 'ok':
-                mauvais.append(titre)
+                mauvais.append(titres[cle])
         return valeurs, mauvais
 
-    def _compte_local(self):
-        return self.champs['compte_local'].get_text().strip() or (self.config.compte_local if self.config else '')
+    def _maj_bouton_rejoindre(self):
+        if not hasattr(self, 'bouton_rejoindre'):  # champs remplis pendant la construction
+            return
+        _, mauvais = self.valeurs_champs()
+        self.bouton_rejoindre.set_sensitive(not mauvais and not self.lanceur.occupe)
+
+    @staticmethod
+    def compte_local():
+        return getpass.getuser()
 
     # --- actions -------------------------------------------------------------------------------------------------
 
-    def lancer_etape(self, identifiant):
+    def rejoindre(self):
         if self.lanceur.occupe:
             self.toast('Une action est déjà en cours')
             return
-        etape = next((e for e in self.etats if e['id'] == identifiant), {'id': identifiant})
-        if identifiant == 'secours':
-            nom = (self.config.secours if self.config and self.config.secours else 'secours')
-            dialogues.secours(self, nom, lambda mdp: self.executer(etape, ['--nom', nom], mdp + '\n'))
-        elif identifiant == 'configurer':
-            self._configurer(etape)
-        elif identifiant == 'premiere_connexion':
-            dialogues.premiere_connexion(self, self.champs['compte'].get_text().strip(),
-                                         connexion=self.valeur_connexion())
-        elif identifiant == 'reprise':
-            self._reprendre(etape)
-        elif identifiant == 'verification':
-            self._verifier()
-        else:
-            self.executer(etape, [])
-
-    def _configurer(self, etape):
         valeurs, mauvais = self.valeurs_champs()
         if mauvais:
             self.toast('Champ à corriger : ' + mauvais[0])
             return
-        groupes = ','.join(self.config.groupes) if self.config and self.config.groupes else ''
-        arguments = ['--locataire', valeurs['locataire'], '--client', valeurs['client'], '--compte', valeurs['compte'],
-                     '--compte-local', valeurs['compte_local'], '--connexion', self.valeur_connexion()]
-        if self.config and self.config.secours:
-            arguments += ['--secours', self.config.secours]
-        if groupes:
-            arguments += ['--groupes', groupes]
-        self.executer(etape, arguments)
+        arguments = ['--compte', valeurs['compte'], '--nom-machine', valeurs['nom_machine'],
+                     '--compte-local', self.compte_local()]
+        self.dernier_rejoindre = (valeurs['compte'], valeurs['nom_machine'])
+        self.arguments_rejoindre = arguments
+        self.rejoindre_en_cours = True
+        self.compilation_requise = False
+        self.executer('rejoindre', arguments)
 
-    def _reprendre(self, etape):
-        valeurs, mauvais = self.valeurs_champs()
-        local = self._compte_local()
-        peut_maintenant = bool(local) and getpass.getuser() != local
-        dialogues.reprise(self, local, valeurs.get('compte') or self.champs['compte'].get_text().strip(), peut_maintenant,
-                          lambda mode: self.executer(etape, ['--' + mode]))
+    def lancer_etape(self, identifiant):
+        """Une étape de la page Détails, lancée seule."""
+        if self.lanceur.occupe:
+            self.toast('Une action est déjà en cours')
+            return
+        etape = next((e for e in self.etats if e['id'] == identifiant), {'id': identifiant})
+        action = donnees.action_de_etape(etape)
+        compte = self.champs['compte'].get_text().strip()
+        if identifiant == 'secours':
+            nom = (getattr(self.config, 'secours', '') or 'secours')
+            dialogues.secours(self, nom, lambda mdp: self.executer(action, ['--nom', nom], mdp + '\n'))
+        elif identifiant == 'compiler':
+            self.compiler()
+        elif identifiant == 'installer':
+            self.executer(action, donnees.argv_paquets(self.dossier_compilation()))
+        elif identifiant == 'nom_machine':
+            etat, norme, _ = donnees.valider_champ(self.coeur, 'nom_machine', self.champs['nom_machine'].get_text())
+            if etat != 'ok':
+                self.toast('Corrigez d’abord le nom de la machine')
+                return
+            self.executer(action, ['--nom', norme])
+        elif identifiant == 'configurer':
+            etat, norme, _ = donnees.valider_champ(self.coeur, 'compte', compte)
+            if etat != 'ok':
+                self.toast('Corrigez d’abord l’adresse pro')
+                return
+            self.executer(action, ['--compte', norme, '--compte-local', self.compte_local()])
+        elif identifiant == 'premiere_connexion':
+            dialogues.premiere_connexion(self, compte, lambda: self.executer(action, []))
+        else:
+            self.executer(action, [])
 
-    def _verifier(self):
+    def verifier(self):
         def travail():
             config = self.coeur.config.charger(self.systeme) or self.coeur.config.defauts(self.systeme)
             return self.coeur.verification.controler(self.systeme, config)
@@ -324,37 +481,74 @@ class Fenetre(Adw.ApplicationWindow):
             if erreur is not None:
                 self.toast('Vérification impossible : %s' % erreur)
                 return
-            noter = lambda: self.executer({'id': 'noter-verification', 'action': 'noter-verification'}, [])
-            dialogues.verification(self, controles, noter)
+            dialogues.verification(self, controles, None)
         lanceur.en_arriere(travail, fini)
 
     def desactiver(self):
         dialogues.confirmer(self, 'Désactiver la connexion Entra ?',
-                            'La connexion par Entra est coupée, sans rien désinstaller. L’étape « Configurer la connexion '
-                            'Entra » la rétablit.', 'Désactiver',
-                            lambda: self.executer({'id': 'desactiver', 'action': 'desactiver'}, []))
+                            'La connexion par Entra est coupée et vous vous connectez avec le compte local seul, sans '
+                            'rien désinstaller. « Rejoindre » la rétablit.', 'Désactiver',
+                            lambda: self.executer('desactiver', []))
 
-    def annuler_reprise(self):
-        dialogues.confirmer(self, 'Annuler la reprise ?',
-                            'Le compte local est rétabli à partir de la sauvegarde et le compte Entra retrouve son propre '
-                            'identifiant. À utiliser si la reprise a mal tourné.', 'Annuler la reprise',
-                            lambda: self.executer({'id': 'annuler-reprise', 'action': 'annuler-reprise'}, []))
+    def ouvrir_details(self):
+        self.navigation.push_by_tag('details')
 
-    def ouvrir_guide(self):
-        dialogues.guide_portail(self, self.coeur)
+    def montrer_formulaire(self):
+        self.page_figee = False
+        self.pages.set_visible_child_name('formulaire')
 
-    def executer(self, etape, arguments, stdin=None):
-        """Lance une action de sesame-racine par pkexec. Une seule à la fois."""
-        action = donnees.action_de_etape(etape)
+    def _fin_affichage(self):
+        """Quitte la page finale ou l'erreur : retour au formulaire (ou à « relié » si c'est fait)."""
+        self.page_figee = False
+        self.rejoindre_en_cours = False
+        self._afficher()
+        self.actualiser()
+
+    def executer(self, action, arguments, stdin=None, garder=False):
+        """Lance une action de sesame-racine par pkexec (action : nom de la sous-commande). Une seule à la fois."""
+        if isinstance(action, dict):  # ancien appel avec le dict d'une étape
+            action = donnees.action_de_etape(action)
         argv = donnees.commande_racine(action, arguments)
-        self.action_en_cours = etape['id']
-        self.expandeur.set_expanded(True)
-        self._ecrire('etape', '\n=== %s ===\n' % (etape.get('titre') or action))
+        if self.lanceur.occupe:
+            self.toast('Une action est déjà en cours')
+            return
+        self.action_en_cours = action
+        self.page_figee = True
+        self._demarrer_progression(action, garder)
         ok = self.lanceur.lancer(argv, stdin, self._evenement, lambda code, fin: self._action_finie(action, arguments, code, fin))
         if not ok:
             self.toast('Une action est déjà en cours')
             return
         self._maj_boutons()
+
+    # --- progression ---------------------------------------------------------------------------------------------
+
+    TITRES_ACTIONS = {'rejoindre': 'Le poste rejoint Microsoft Entra ID…', 'desactiver': 'Désactivation de la connexion Entra…'}
+
+    def _demarrer_progression(self, action, garder=False):
+        if not garder:
+            while (ligne := self.liste.get_first_child()) is not None:
+                self.liste.remove(ligne)
+            self.lignes = []
+            self.tampon.set_text('')
+        self.note_compilation.set_visible(False)
+        self.titre_progression.set_text(self.TITRES_ACTIONS.get(action, 'Action en cours : %s…' % action))
+        if not garder:
+            self.expandeur.set_expanded(False)
+        if self.navigation.get_visible_page().get_tag() != 'principal':
+            self.navigation.pop_to_tag('principal')
+        self.pages.set_visible_child_name('progression')
+
+    def _nouvelle_ligne(self, texte):
+        if self.lignes and self.lignes[-1].etat == 'en_cours':
+            self.lignes[-1].definir('fait')
+        ligne = LigneProgression(texte)
+        self.lignes.append(ligne)
+        self.liste.append(ligne.row)
+
+    def _terminer_lignes(self, ok):
+        if self.lignes and self.lignes[-1].etat == 'en_cours':
+            self.lignes[-1].definir('fait' if ok else 'erreur')
 
     def _ecrire(self, balise, texte):
         fin = self.tampon.get_end_iter()
@@ -365,20 +559,129 @@ class Fenetre(Adw.ApplicationWindow):
     def _evenement(self, evenement):
         balise, texte = donnees.mise_en_forme(evenement)
         self._ecrire(balise, texte)
+        if evenement['type'] == 'compilation_requise':
+            self.compilation_requise = True
+        elif evenement['type'] == 'etape' and self.en_compilation:
+            if self.lignes:
+                self.lignes[-1].row.set_subtitle(GLib.markup_escape_text(evenement['texte']))
+        elif evenement['type'] == 'etape':
+            self._nouvelle_ligne(evenement['texte'])
+        elif evenement['type'] == 'fin':
+            self._terminer_lignes(evenement['ok'])
 
     def _action_finie(self, action, arguments, code, fin):
         self.action_en_cours = None
-        if code in lanceur.CODES_ANNULE:
-            self.toast('Authentification annulée')
+        annule = code in lanceur.CODES_ANNULE
+        reussi = (fin['ok'] if fin is not None else code == 0) and not annule
+        self._terminer_lignes(reussi)
+        if annule:
             self._ecrire('avertissement', '! Authentification annulée\n')
-        elif fin is not None:
-            self.toast(fin['message'] or ('Terminé' if fin['ok'] else 'L’action a échoué'))
-            if fin['ok'] and action == 'reprise' and '--au-demarrage' in arguments:
-                dialogues.proposer_redemarrage(self, lambda m: self.toast('Redémarrage impossible : ' + m) if m else None)
-        elif code == 0:
-            self.toast('Terminé')
-        else:
-            self.toast('L’action a échoué (code %s)' % code)
+        elif fin is None and code != 0:
             self._ecrire('fin-erreur', '✘ L’action a échoué (code %s)\n' % code)
+        if action == 'rejoindre' and reussi and self.compilation_requise:
+            self.compilation_requise = False
+            self.compiler(lambda: self.executer('rejoindre', self.arguments_rejoindre + donnees.argv_paquets(
+                self.dossier_compilation()), garder=True), rejoindre=True)
+            return
+        if action == 'rejoindre':
+            self.rejoindre_en_cours = False
+            if reussi:
+                self._page_finale_rejoindre()
+            else:
+                self.statut_erreur.set_description(self._message_erreur(code, fin, annule))
+                self.pages.set_visible_child_name('erreur')
+        else:
+            self.page_figee = False
+            self.toast((fin['message'] if fin and fin['message'] else None)
+                       or (CODE_ANNULE if annule else ('Terminé' if reussi else 'L’action a échoué')))
         self._maj_boutons()
         self.actualiser()
+
+    # --- compilation de Himmelblau (sous l'utilisateur, sans pkexec) ---------------------------------------------
+
+    def dossier_compilation(self):
+        return donnees.dossier_compilation(self.coeur, self.config)
+
+    def compiler(self, suite=None, rejoindre=False):
+        """Compile Himmelblau (file Gagarine si présente), puis appelle suite() si elle réussit."""
+        if self.lanceur.occupe:
+            self.toast('Une action est déjà en cours')
+            return
+        if getattr(self.coeur, 'compilation', None) is None:
+            self.toast('Compilation impossible : module de compilation absent')
+            return
+        argv = donnees.argv_compilation(self.coeur, self.dossier_compilation())
+        self.suite_compilation = suite
+        self.rejoindre_en_cours = rejoindre
+        self.en_compilation = True
+        self.action_en_cours = 'compiler'
+        self.page_figee = True
+        self._demarrer_progression('compiler', garder=rejoindre)
+        self.titre_progression.set_text('Compilation de Himmelblau…')
+        self._nouvelle_ligne('Compiler Himmelblau')
+        self.note_compilation.set_visible(True)
+        self.lanceur.lancer(argv, None, self._evenement, self._compilation_finie)
+        self._maj_boutons()
+
+    def _compilation_finie(self, code, fin):
+        self.en_compilation = False
+        self.action_en_cours = None
+        reussi = (fin['ok'] if fin is not None else code == 0)
+        self._terminer_lignes(reussi)
+        self.note_compilation.set_visible(False)
+        suite, self.suite_compilation = self.suite_compilation, None
+        if reussi and suite is not None:
+            suite()
+            return
+        if self.rejoindre_en_cours:
+            self.rejoindre_en_cours = False
+            if reussi:
+                self._page_finale_rejoindre()
+            else:
+                message = (fin['message'] if fin and fin.get('message') else
+                           'La compilation de Himmelblau s’est arrêtée (code %s).' % code)
+                self.statut_erreur.set_description(message + '\n\nOuvrez le journal pour voir pourquoi, puis réessayez : '
+                                                   'l’assistant reprend où il s’est arrêté.')
+                self.pages.set_visible_child_name('erreur')
+        else:
+            self.page_figee = False
+            self.toast((fin['message'] if fin and fin.get('message') else None)
+                       or ('Compilation terminée' if reussi else 'La compilation a échoué'))
+        self._maj_boutons()
+        self.actualiser()
+
+    def _page_finale_rejoindre(self):
+        compte, nom = self.dernier_rejoindre or ('', '')
+        self.statut_final.set_description(donnees.texte_final(nom, compte))
+        self.pages.set_visible_child_name('final')
+
+    def mettre_a_jour(self):
+        """Menu « Mettre à jour Himmelblau » : compilation de la dernière version stable, puis installation."""
+        self.bandeau.set_revealed(False)
+        paquets = donnees.argv_paquets(self.dossier_compilation())
+        self.compiler(lambda: self.executer('installer', paquets, garder=True))
+
+    def verifier_mise_a_jour(self):
+        """Au démarrage : propose la mise à jour si une nouvelle version stable existe (silencieux sinon)."""
+        compilation = getattr(self.coeur, 'compilation', None)
+        if compilation is None or self.mise_a_jour_proposee or donnees.statut_etape(self.etats, 'installer') != 'fait':
+            return
+        self.mise_a_jour_proposee = True
+        dossier = self.dossier_compilation()
+
+        def travail():
+            return not compilation.a_jour(dossier)
+
+        def fini(nouvelle, erreur):
+            if erreur is None and nouvelle:
+                self.bandeau.set_revealed(True)
+        lanceur.en_arriere(travail, fini)
+
+    @staticmethod
+    def _message_erreur(code, fin, annule):
+        if annule:
+            return CODE_ANNULE
+        if fin is not None and fin.get('message'):
+            return fin['message'] + '\n\nRien n’est perdu : vous pouvez réessayer, l’assistant reprend où il s’est arrêté.'
+        return ('L’opération s’est arrêtée (code %s). Ouvrez le journal pour voir pourquoi, puis réessayez : l’assistant '
+                'reprend où il s’est arrêté.' % code)

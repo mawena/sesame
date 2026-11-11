@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sésame, votre compte Entra sur Ubuntu</title>
-<meta name="description" content="Sésame connecte un poste Ubuntu 24.04+ à Microsoft Entra ID avec authd (adresse pro et mot de passe, comme sur Windows), puis fait reprendre au compte Entra votre compte local : même UID, même dossier, mêmes groupes. Installation par apt.">
+<meta name="description" content="Sésame relie un poste Ubuntu 24.04+ à Microsoft Entra ID avec Himmelblau, comme un PC Windows : votre adresse pro et le nom de la machine, c'est tout. Votre compte local reste le même. Installation par apt.">
 <meta name="theme-color" content="#f7f1e6" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#17130e" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="icone.svg" type="image/svg+xml">
@@ -19,7 +19,7 @@
   <a class="marque" href="./"><img src="icone.svg" alt="" width="32" height="32"><span>Sésame</span></a>
   <nav aria-label="Liens du projet">
     <a href="#installer">Installer</a>
-    <a href="#etapes">Les étapes</a>
+    <a href="#etapes">Comment ça se passe</a>
     <a href="#securite">Sécurité</a>
     <a href="https://github.com/mawena/sesame/releases/latest">Dernière version</a>
     <a href="https://github.com/mawena/sesame">Code source</a>
@@ -30,10 +30,10 @@
   <section class="ouverture" aria-labelledby="titre">
     <div>
       <h1 id="titre">Sésame<em>,</em></h1>
-      <p class="chapeau">votre compte Microsoft Entra ouvre votre poste Ubuntu, avec votre bureau, vos fichiers et vos groupes comme avant.</p>
+      <p class="chapeau">votre compte Microsoft Entra ouvre votre poste Ubuntu, comme sur un PC Windows : votre adresse pro, le nom de la machine, c'est tout.</p>
     </div>
     <figure class="apercu">
-      <img src="captures/apercu.png" alt="L'assistant Sésame : les étapes de la connexion Entra, chacune avec son état et son bouton Lancer" width="910" height="750">
+      <img src="captures/apercu.png" alt="L'assistant Sésame : adresse pro, nom de la machine et bouton Rejoindre" width="910" height="750">
     </figure>
     <div class="installation-courte">
       <p>Sur Ubuntu 24.04 ou plus récent :</p>
@@ -47,29 +47,25 @@
 
   <section class="pourquoi" aria-labelledby="pourquoi-titre">
     <h2 id="pourquoi-titre">À quoi ça sert</h2>
-    <p>Avec <a href="https://ubuntu.com/docs/authd/stable-docs/">authd</a> et son module Microsoft Entra ID, on ouvre une session Ubuntu avec son compte de l'entreprise. Mais ce compte arrive avec un autre identifiant, un autre dossier personnel et aucun groupe : le poste de tous les jours disparaît.</p>
-    <p>Sésame fait le trajet complet. Il installe et configure authd, puis le compte Entra <strong>reprend le compte local existant</strong> : même UID, même dossier personnel, mêmes groupes (<code>sudo</code>, <code>docker</code>…), même crontab. Vous retrouvez votre bureau, mais vous vous y connectez avec votre compte Entra. Un assistant graphique détecte l'état de chaque étape et propose la suivante ; la commande <code>sesame</code> fait la même chose dans un terminal.</p>
-    <p><strong>Adresse pro et mot de passe Entra, comme sur Windows.</strong> Depuis la version 1.1.0, vous tapez votre adresse, votre mot de passe Entra, puis vous validez la double authentification (Microsoft Authenticator, code à usage unique, clé FIDO2…). Le PC est inscrit dans Entra, comme un PC Windows. Il faut authd 0.7.0 et le module Entra 0.5.0, que Sésame met à jour ; l'ancienne connexion par code sur le téléphone reste disponible en secours.</p>
+    <p>Sur un PC Windows, rejoindre Entra demande une adresse et un mot de passe : rien à créer, rien à chercher. Sésame fait la même chose sur Ubuntu avec <a href="https://himmelblau-idm.org">Himmelblau</a>, un logiciel libre qui passe par les applications de Microsoft, comme Windows, et retrouve votre organisation à partir du domaine de l'adresse.</p>
+    <p><strong>Aucune application ni aucun ID à créer dans Entra.</strong> Vous donnez votre <strong>adresse pro</strong> et le <strong>nom de la machine</strong> ; Sésame sauvegarde, crée un compte de secours, installe Himmelblau et relie votre compte. Votre compte local reste tel quel : même identifiant, même dossier personnel, mêmes groupes, mêmes réglages. Pas de reprise de compte, pas de redémarrage.</p>
+    <p><strong>Gratuit, sans abonnement.</strong> Sésame compile sur votre poste la branche stable <code>stable-4.x</code> de Himmelblau, sous votre compte : c'est la voie gratuite prévue par l'installateur officiel de Himmelblau. Comptez 30 à 60 minutes, environ 6 Go de RAM et 10 Go de disque (podman est installé pour l'occasion). Un assistant graphique fait tout ; la commande <code>sesame rejoindre</code> fait la même chose dans un terminal, et <code>sesame mettre-a-jour</code> recompile quand une nouvelle version stable sort.</p>
   </section>
 
   <section class="etapes" id="etapes" aria-labelledby="etapes-titre">
-    <h2 id="etapes-titre">Quatre moments, dans l'ordre</h2>
+    <h2 id="etapes-titre">Trois moments, dans l'ordre</h2>
     <ol class="liste-etapes">
       <li>
-        <h3>Le portail Entra</h3>
-        <p>Un administrateur du locataire crée une application « Ubuntu authd » (client public avec son URI de redirection, locataire unique, permissions Microsoft Graph, consentement administrateur). Sésame explique chaque clic et ouvre le portail. Il vous faut deux identifiants : l'ID du locataire et l'ID de l'application, qui ne sont pas des secrets.</p>
-      </li>
-      <li>
         <h3>L'assistant</h3>
-        <p>Sauvegarde, compte de secours, sortie d'un éventuel domaine Active Directory, installation d'authd et de son module, configuration. Chaque étape détecte si elle est déjà faite : on peut tout relancer sans risque.</p>
+        <p>Une page : votre adresse pro et le nom de la machine (prérempli). Un clic sur « Rejoindre » : une fenêtre de mot de passe Ubuntu pour la préparation (sauvegarde, compte de secours, nom de la machine, sortie d'un éventuel domaine Active Directory), puis la compilation de Himmelblau sous votre compte, avec sa progression, puis une seconde fenêtre pour l'installation et la configuration. Chaque étape détecte si elle est déjà faite : on peut tout relancer sans risque.</p>
       </li>
       <li>
         <h3>La première connexion</h3>
-        <p>À l'écran d'accueil, « Non listé ? », votre adresse pro, « Microsoft Entra ID », votre mot de passe Entra, puis la double authentification (Authenticator, code). C'est tout. Si vous préférez, le mode « code sur le téléphone » est toujours là, avec le choix d'un mot de passe local utilisé hors ligne.</p>
+        <p>Vous vous déconnectez, vous choisissez votre compte à l'écran d'accueil, vous tapez le mot de passe Entra de votre adresse pro et vous validez sur le téléphone. Le poste est inscrit dans Entra à ce moment-là, comme un PC Windows.</p>
       </li>
       <li>
-        <h3>La reprise au démarrage</h3>
-        <p>Un service systemd tourne avant l'écran de connexion, quand aucun programme n'utilise l'un des deux comptes : le compte Entra prend l'UID, le dossier, les groupes et la crontab du compte local. Après le redémarrage, vous vous connectez avec le compte Entra, et Sésame vérifie que tout y est.</p>
+        <h3>Le code PIN</h3>
+        <p>Himmelblau vous fait ensuite choisir un code PIN (Windows Hello) : c'est lui qui sert aux connexions et aux déverrouillages suivants, sans repasser par le téléphone.</p>
       </li>
     </ol>
   </section>
@@ -84,18 +80,18 @@
       </div>
       <div>
         <h3>Compte de secours</h3>
-        <p>Un compte administrateur local de dépannage, avec un mot de passe que vous choisissez. Il n'est jamais écrit sur le disque par Sésame.</p>
+        <p>Un compte administrateur local de dépannage, avec un mot de passe que vous choisissez, ou celui de votre compte actuel. Le mot de passe passe par l'entrée standard et n'est jamais écrit dans un journal.</p>
       </div>
       <div>
-        <h3>Annulation</h3>
-        <p>Si la reprise échoue, elle s'annule toute seule. Après coup, <code>sesame annuler-reprise</code> remet le compte local, et <code>sesame desactiver</code> coupe la connexion Entra sans rien désinstaller.</p>
+        <h3>Retour en arrière</h3>
+        <p><code>sesame desactiver</code> coupe la connexion Entra sans rien désinstaller : vous vous connectez à nouveau en local seulement. <code>sesame rejoindre</code> rétablit tout.</p>
       </div>
     </div>
   </section>
 
   <section class="installer" id="installer" aria-labelledby="installer-titre">
     <h2 id="installer-titre">Installer</h2>
-    <p>Pour Ubuntu Desktop 24.04 ou plus récent (GNOME, GDM). Il faut des droits d'administration sur le poste, et sur le locataire Entra pour créer l'application. Une fois le dépôt ajouté, <code>sudo apt upgrade</code> apporte les nouvelles versions.</p>
+    <p>Pour Ubuntu Desktop 24.04 ou plus récent (GNOME, GDM). Il faut des droits d'administration sur le poste, environ 10 Go de disque et 6 Go de RAM pour compiler Himmelblau. Une fois le dépôt ajouté, <code>sudo apt upgrade</code> apporte les nouvelles versions.</p>
     <ol class="pas">
       <li>
         <p>Ajouter la clé qui signe le dépôt :</p>
@@ -110,8 +106,8 @@
         <div class="commande"><pre><code id="cmd-installer">sudo apt update && sudo apt install sesame</code></pre><button type="button" class="copier" data-cible="cmd-installer" hidden>Copier</button></div>
       </li>
       <li>
-        <p>Voir où en est le poste :</p>
-        <div class="commande"><pre><code id="cmd-etat">sesame</code></pre><button type="button" class="copier" data-cible="cmd-etat" hidden>Copier</button></div>
+        <p>Rejoindre Entra (ou lancez « Sésame » depuis les applications) :</p>
+        <div class="commande"><pre><code id="cmd-etat">sesame rejoindre</code></pre><button type="button" class="copier" data-cible="cmd-etat" hidden>Copier</button></div>
       </li>
     </ol>
     <p>Sans le dépôt : téléchargez le paquet <code>.deb</code> et sa somme de contrôle sur la page de la <a href="https://github.com/mawena/sesame/releases/latest">dernière version</a>, puis <code>sudo apt install ./sesame_*_all.deb</code>.</p>
@@ -124,7 +120,7 @@
 </main>
 
 <footer class="pied">
-  <p>Sésame est un logiciel libre sous licence MIT, écrit par <a href="https://github.com/mawena">mawena</a>. Il s'appuie sur <a href="https://ubuntu.com/identity/authd">authd</a> de Canonical ; il n'est pas affilié à Microsoft ni à Canonical.</p>
+  <p>Sésame est un logiciel libre sous licence MIT, écrit par <a href="https://github.com/mawena">mawena</a>. Il s'appuie sur <a href="https://himmelblau-idm.org">Himmelblau</a> ; il n'est affilié ni à Microsoft ni au projet Himmelblau.</p>
   <p>Clé du dépôt APT : <code>EC3E F563 FE1B 133E 5575 3127 1089 B937 B4BD A7F1</code></p>
 </footer>
 

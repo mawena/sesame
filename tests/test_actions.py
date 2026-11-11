@@ -1,308 +1,500 @@
-"""Actions root : sauvegarde, secours, quitter-ad, installer, configurer, désactiver."""
-import tarfile
+"""Actions root : sauvegarde, secours, nom de la machine, AD, dépôt, installation, configuration, rejoindre."""
+import json
+import os
 
-from sesame import actions, chemins, config as cfg, etat, sauvegarde
-from sesame.systeme import ErreurSesame, Resultat
-from tests.commun import A, CLIENT, H, LOCATAIRE, N, U, Base
+from sesame import actions, chemins, config as cfg, etat, himmelblau
+from sesame.systeme import ErreurSesame
+from tests.commun import A, DOSSIER_COMPIL, EMPREINTE, N, NOM, PAQUETS_DIR, Base
 
 
-class TestSauvegarde(Base):
+class BaseActions(Base):
     def setUp(self):
         super().setUp()
         self.peupler()
+        self.m.recepteur = self.m.ecrit
 
+    def textes(self):
+        return [t for _, t in self.m.evenements]
+
+    def sorties_apt(self):
+        return [a for a in self.m.appels if a[0] == "apt-get"]
+
+
+class TestSauvegarde(BaseActions):
     def test_contenu(self):
-        dossier = sauvegarde.faire(self.m, A, "Mon Motif!")
-        self.assertRegex(dossier, r"/var/lib/sesame/sauvegardes/\d{8}-\d{6}-mon-motif-$")
-        self.assertEqual(oct(self.m.chemin(dossier).stat().st_mode & 0o777), "0o700")
-        for chemin in ("/etc/passwd", "/etc/shadow", "/etc/group", "/etc/subuid", "/etc/nsswitch.conf", "/etc/login.defs",
-                       "/etc/gdm3/custom.conf", "/etc/systemd/system/app.service",
-                       "/etc/vmware/hostd/authorization.xml", f"/var/lib/AccountsService/users/{A}"):
+        self.installer_himmelblau()
+        self.ecrire("/etc/hostname", "x\n")
+        message = actions.faire_sauvegarde(self.m, "essai")
+        dossier = etat.derniere_sauvegarde(self.m)["chemin"]
+        self.assertIn(dossier, message)
+        for chemin in ("/etc/passwd", "/etc/pam.d/common-auth", "/etc/hosts", "/etc/hostname",
+                       himmelblau.CONFIG, himmelblau.USER_MAP):
             self.assertTrue(self.existe(dossier + chemin), chemin)
-        self.assertFalse(self.existe(dossier + "/etc/sssd"))  # absent du poste : ignoré
-        self.assertEqual(self.lire(f"{dossier}/crontab-{A}"), "0 2 * * * sauvegarde\n")
-        self.assertEqual(oct(self.m.chemin(dossier + f"/crontab-{A}").stat().st_mode & 0o777), "0o600")
-        self.assertEqual(etat.derniere_sauvegarde(self.m)["chemin"], dossier)
+        self.assertEqual(oct(os.stat(self.m.chemin(dossier)).st_mode & 0o777), "0o700")
 
-    def test_deux_sauvegardes_dans_la_meme_seconde(self):
-        self.m.horodatage = lambda: "20261111-120000"
-        un, deux = sauvegarde.faire(self.m, A), sauvegarde.faire(self.m, A)
-        self.assertNotEqual(un, deux)
-        self.assertEqual(len(etat.lire(self.m)["sauvegardes"]), 2)
-
-    def test_action(self):
-        self.config()
-        self.assertIn("sauvegardée", actions.faire_sauvegarde(self.m))
-        self.assertIsNotNone(etat.derniere_sauvegarde(self.m))
+    def test_himmelblau_conf_sauvegarde_si_present(self):
+        self.ecrire(himmelblau.CONFIG, "[global]\nx = 1\n")
+        actions.faire_sauvegarde(self.m)
+        dossier = etat.derniere_sauvegarde(self.m)["chemin"]
+        self.assertEqual(self.lire(dossier + himmelblau.CONFIG), "[global]\nx = 1\n")
 
 
-class TestSecours(Base):
+class TestSecours(BaseActions):
     def setUp(self):
         super().setUp()
         self.peupler(secours=False)
 
-    def test_creation(self):
-        actions.creer_secours(self.m, "secours", "motdepasse1")
-        useradd = next(a for a in self.m.appels if a[0] == "useradd")
-        self.assertEqual(useradd, ["useradd", "-m", "-s", "/bin/bash", "-c", "Compte de secours (Sésame)", "-G", "sudo",
-                                   "secours"])
-        self.assertEqual(self.m.mots_de_passe["secours"], "motdepasse1")
+    def test_copie_de_l_empreinte(self):
+        msg = actions.creer_secours(self.m, "secours", copier_de=A)
+        self.assertIn("secours", msg)
+        self.assertIn(["chpasswd", "-e"], self.m.appels)
+        self.assertEqual(self.m.empreintes["secours"], EMPREINTE)
         self.assertIn("secours", self.m.groupes_locaux()["sudo"].membres)
+        self.assertFalse(any(EMPREINTE in " ".join(a) for a in self.m.appels))
+        self.assertEqual(cfg.charger(self.m).secours, "secours")
 
-    def test_le_mot_de_passe_ne_figure_jamais_dans_les_commandes_ni_les_evenements(self):
-        self.m.recepteur = self.m.ecrit
-        actions.creer_secours(self.m, "secours", "motdepasse1")
-        self.assertNotIn("motdepasse1", repr(self.m.appels))
-        self.assertNotIn("motdepasse1", repr(self.m.evenements))
+    def test_mot_de_passe_choisi(self):
+        actions.creer_secours(self.m, "depannage", "mot-de-passe-9")
+        self.assertEqual(self.m.mots_de_passe, {"depannage": "mot-de-passe-9"})
+        self.assertNotIn("mot-de-passe-9", " ".join(" ".join(a) for a in self.m.appels))
 
-    def test_mot_de_passe_obligatoire_pour_creer(self):
+    def test_empreinte_inutilisable(self):
+        for mauvaise in ("!", "*", "", "!$6$x"):
+            self.ecrire("/etc/shadow", f"{A}:{mauvaise}:19000:0:99999:7:::\n")
+            with self.assertRaises(ErreurSesame) as e:
+                actions.creer_secours(self.m, "secours", copier_de=A)
+            self.assertIn("mot de passe utilisable", str(e.exception))
+        self.assertEqual(self.m.modifiantes(), [])
+
+    def test_sans_mot_de_passe_ni_modele(self):
         with self.assertRaises(ErreurSesame):
-            actions.creer_secours(self.m, "secours", None)
-        self.assertEqual(self.m.appels, [])
-
-    def test_mot_de_passe_trop_court(self):
+            actions.creer_secours(self.m, "secours")
+        with self.assertRaises(ErreurSesame):
+            actions.creer_secours(self.m, "secours", copier_de="inconnu")
+        with self.assertRaises(ErreurSesame):
+            actions.creer_secours(self.m, "Mauvais Nom", "mot-de-passe-9")
         with self.assertRaises(ErreurSesame):
             actions.creer_secours(self.m, "secours", "court")
 
-    def test_compte_existant_sans_mot_de_passe(self):
-        self.ecrire("/etc/passwd", self.lire("/etc/passwd") + "secours:x:1001:1001::/home/secours:/bin/sh\n")
-        actions.creer_secours(self.m, "secours", None)
-        self.assertEqual([a[0] for a in self.m.appels], ["usermod"])
-        self.assertEqual(self.m.mots_de_passe, {})
-
-    def test_compte_existant_avec_mot_de_passe(self):
-        self.ecrire("/etc/passwd", self.lire("/etc/passwd") + "secours:x:1001:1001::/home/secours:/bin/sh\n")
-        actions.creer_secours(self.m, "secours", "nouveau-mdp")
-        self.assertEqual([a[0] for a in self.m.appels], ["usermod", "chpasswd"])
-
-    def test_nom_invalide(self):
-        with self.assertRaises(ErreurSesame):
-            actions.creer_secours(self.m, "Pas Valide", "motdepasse1")
-
-
-class TestQuitterAd(Base):
-    def setUp(self):
-        super().setUp()
+    def test_compte_existant_repare_sans_toucher_au_mot_de_passe(self):
         self.peupler()
-        self.config()
-        self.m.domaines_joints = ["cofinacorp.com"]
-        del self.m.entra[N]  # le compte AD disparaît avec le domaine
-        self.ecrire(chemins.NSSWITCH, "passwd: files systemd sss\ngroup: files sss\nshadow: files\nsudoers: files sss\n")
-        self.ecrire("/var/lib/sss/db/cache.ldb", "x")
-        self.ecrire("/var/lib/sss/db/config.ldb.bak", "garde")
-        self.ecrire("/var/lib/sss/mc/passwd", "x")
-        self.ecrire(f"/home/{N}/.bashrc", "ancien dossier AD")
-
-    def test_sequence(self):
-        sauvegarde.faire(self.m, A)
-        self.m.appels.clear()
-        self.assertIn("quitté", actions.quitter_ad(self.m))
-        self.assertEqual(self.m.modifiantes(), [["realm", "leave", "-v", "cofinacorp.com"],
-                                                ["systemctl", "disable", "--now", "sssd"],
-                                                ["pam-auth-update", "--disable", "sss"]])
-        self.assertEqual(self.m.domaines_joints, [])
-        self.assertEqual(self.lire(chemins.NSSWITCH), "passwd: files systemd\ngroup: files\nshadow: files\nsudoers: files\n")
-        self.assertFalse(self.existe("/var/lib/sss/db/cache.ldb"))
-        self.assertTrue(self.existe("/var/lib/sss/db/config.ldb.bak"))
-        self.assertFalse(self.existe("/var/lib/sss/mc/passwd"))
-        self.assertTrue(etat.lire(self.m)["quitter_ad"])
-
-    def test_archive_puis_suppression_du_dossier_ad(self):
-        sauv = sauvegarde.faire(self.m, A)
-        actions.quitter_ad(self.m)
-        self.assertFalse(self.existe(f"/home/{N}"))
-        with tarfile.open(self.m.chemin(f"{sauv}/home-ad-{N}.tar.gz")) as t:
-            self.assertIn(f"{N}/.bashrc", t.getnames())
-
-    def test_sans_sauvegarde_une_est_creee(self):
-        actions.quitter_ad(self.m)
-        self.assertIsNotNone(etat.derniere_sauvegarde(self.m))
-        self.assertTrue(any(n.startswith("home-ad-") for n in self.m.lister(etat.derniere_sauvegarde(self.m)["chemin"])))
-
-    def test_pam_en_echec_donne_un_avertissement(self):
-        self.m.recepteur = self.m.ecrit
-        self.m.forces[("pam-auth-update", "--disable", "sss")] = Resultat(1)
-        actions.quitter_ad(self.m)
-        self.assertTrue(any(t == "avertissement" for t, _ in self.m.evenements))
-
-    def test_realm_leave_en_echec(self):
-        self.m.panne_a = 0
-        with self.assertRaises(ErreurSesame):
-            actions.quitter_ad(self.m)
-
-    def test_compte_ad_encore_visible(self):
-        self.m.entra[N] = {"uid": 1, "gid": 1, "home": "/x"}
-        with self.assertRaises(ErreurSesame):
-            actions.quitter_ad(self.m)
+        self.ecrire("/etc/group", self.lire("/etc/group").replace(",secours", ""))
+        actions.creer_secours(self.m, "secours", copier_de=A)
+        self.assertIn("secours", self.m.groupes_locaux()["sudo"].membres)
+        self.assertNotIn(["chpasswd", "-e"], self.m.appels)
+        self.assertEqual(self.m.empreintes, {})
 
 
-class TestInstaller(Base):
-    def setUp(self):
-        super().setUp()
-        self.peupler()
-        self.m.paquets.clear()
-        self.m.snaps.clear()
+class TestNomMachine(BaseActions):
+    def test_changement(self):
+        msg = actions.changer_nom_machine(self.m, NOM)
+        self.assertIn(NOM, msg)
+        self.assertEqual(self.lire("/etc/hostname"), NOM + "\n")
+        self.assertIn(["hostnamectl", "hostname", NOM], self.m.appels)
+        self.assertEqual(self.lire("/etc/hosts"), f"127.0.0.1\tlocalhost\n127.0.1.1\t{NOM}\n::1\tip6-localhost\n")
+        self.assertEqual(cfg.charger(self.m).nom_machine, NOM)
 
-    def test_ubuntu_2404(self):
-        actions.installer(self.m)
-        self.assertEqual(self.m.modifiantes(), [
-            ["add-apt-repository", "-y", "ppa:ubuntu-enterprise-desktop/authd"],
-            ["apt-get", "update"],
-            ["apt-get", "install", "-y", "authd", "gnome-shell", "yaru-theme-gnome-shell"],
-            ["snap", "install", "authd-msentraid"]])
-        self.assertTrue(etat.lire(self.m)["installer"])
+    def test_ligne_hosts_ajoutee_apres_localhost(self):
+        self.ecrire("/etc/hosts", "127.0.0.1 localhost\n::1 ip6\n")
+        actions.changer_nom_machine(self.m, "Poste-1")
+        self.assertEqual(self.lire("/etc/hosts"), "127.0.0.1 localhost\n127.0.1.1\tPoste-1\n::1 ip6\n")
 
-    def test_ubuntu_plus_recent_sans_ppa(self):
-        self.ecrire("/etc/os-release", 'VERSION_ID="25.10"\n')
-        actions.installer(self.m)
-        self.assertNotIn("add-apt-repository", [a[0] for a in self.m.appels])
-
-    def test_snap_deja_la(self):
-        self.m.snaps.add("authd-msentraid")
-        actions.installer(self.m)
-        self.assertNotIn(["snap", "install", "authd-msentraid"], self.m.appels)
-
-    def test_met_a_jour_le_module_deja_installe(self):
-        self.m.snaps.add("authd-msentraid")
-        self.m.versions.update({"authd": "0.6.0", "authd-msentraid": "0.4.0"})
-        self.m.mises_a_jour.update({"authd": "0.7.0", "authd-msentraid": "0.5.1"})
-        self.m.recepteur = self.m.ecrit
-        message = actions.installer(self.m)
-        self.assertIn(["snap", "refresh", "authd-msentraid"], self.m.modifiantes())
-        self.assertIn("authd 0.7.0 et le module Entra 0.5.1", message)
-        self.assertEqual(etat.lire(self.m)["installer"]["module"], "0.5.1")
-        self.assertFalse([e for e in self.m.evenements if e[0] == "avertissement"])
-
-    def test_avertit_si_trop_ancien(self):
-        self.m.versions["authd-msentraid"] = "0.4.0"
-        self.m.recepteur = self.m.ecrit
-        actions.installer(self.m)
-        avertissements = [t for type_, t in self.m.evenements if type_ == "avertissement"]
-        self.assertEqual(len(avertissements), 1)
-        self.assertIn("0.4.0 (il faut 0.5.0)", avertissements[0])
-
-    def test_refus_avant_24_04(self):
-        for version in ("22.04", "20.04", None):
-            self.ecrire("/etc/os-release", f'VERSION_ID="{version}"\n' if version else "")
-            with self.assertRaises(ErreurSesame):
-                actions.installer(self.m)
-        self.assertEqual(self.m.appels, [])
-
-    def test_echec_d_apt(self):
-        self.m.panne_a = 1
-        with self.assertRaises(ErreurSesame):
-            actions.installer(self.m)
-        self.assertNotIn("installer", etat.lire(self.m))
-
-
-class TestConfigurer(Base):
-    def setUp(self):
-        super().setUp()
-        self.peupler()
-        self.ecrire(chemins.BROKER_MODELE, "[authd]\nname = Microsoft Entra ID\n")
-        self.ecrire(chemins.BROKER_CONF, "# modèle d'origine\n")
-        self.ecrire(chemins.LOGIN_DEFS, "LOGIN_TIMEOUT\t\t60\n")
-        self.ecrire(chemins.NSSWITCH, "passwd: files systemd\ngroup: files systemd\nshadow: files\n")
-
-    def construire(self, **extra):
-        args = dict(locataire=LOCATAIRE, client=CLIENT, compte=N.upper(), groupes=["sudo", "docker"])
-        args.update(extra)
-        return actions.construire_config(self.m, **args)
-
-    def test_construction_depuis_le_compte_local(self):
-        c = self.construire(compte_local=A)
-        self.assertEqual((c.compte_local, c.uid, c.gid, c.dossier), (A, U, U, H))
-        self.assertEqual(c.compte, N)
-        self.assertEqual(c.secours, "secours")
-
-    def test_config_complete(self):
-        actions.configurer(self.m, self.construire(compte_local=A))
-        self.assertEqual(cfg.charger(self.m).compte, N)
-        self.assertEqual(self.lire(chemins.BROKER_AUTHD), "[authd]\nname = Microsoft Entra ID\n")
-        self.assertEqual(self.lire(chemins.BROKER_CONF + ".origine"), "# modèle d'origine\n")
-        self.assertIn(f"owner = {N}", self.lire(chemins.BROKER_CONF))
-        self.assertEqual(self.lire(chemins.LOGIN_DEFS), "LOGIN_TIMEOUT\t\t300\n")
-        self.assertEqual(self.lire(chemins.NSSWITCH),
-                         "passwd: files systemd authd\ngroup: files systemd authd\nshadow: files authd\n")
-        self.assertEqual(self.m.modifiantes(), [["systemctl", "restart", "authd"],
-                                                ["systemctl", "restart", chemins.SERVICE_BROKER]])
-
-    def test_origine_jamais_ecrasee(self):
-        actions.configurer(self.m, self.construire(compte_local=A))
-        actions.configurer(self.m, self.construire(compte_local=A))
-        self.assertEqual(self.lire(chemins.BROKER_CONF + ".origine"), "# modèle d'origine\n")
-
-    def test_idempotent(self):
-        actions.configurer(self.m, self.construire(compte_local=A))
-        un = (self.lire(chemins.NSSWITCH), self.lire(chemins.BROKER_CONF), self.lire(chemins.SESAME_CONF))
-        actions.configurer(self.m, self.construire(compte_local=A))
-        self.assertEqual(un, (self.lire(chemins.NSSWITCH), self.lire(chemins.BROKER_CONF), self.lire(chemins.SESAME_CONF)))
-
-    def test_login_timeout_plus_haut_garde(self):
-        self.ecrire(chemins.LOGIN_DEFS, "LOGIN_TIMEOUT 600\n")
-        actions.configurer(self.m, self.construire(compte_local=A))
-        self.assertEqual(self.lire(chemins.LOGIN_DEFS), "LOGIN_TIMEOUT 600\n")
-
-    def test_reconfiguration_apres_la_reprise_garde_uid_et_dossier(self):
-        actions.configurer(self.m, self.construire(compte_local=A))
-        self.ecrire("/etc/passwd", "root:x:0:0::/root:/bin/bash\n")  # le compte local a disparu
-        c = self.construire(compte_local=A)
-        self.assertEqual((c.uid, c.dossier), (U, H))
-
-    def test_valeurs_invalides(self):
-        for extra in ({"locataire": "x"}, {"client": ""}, {"compte": "pas-un-upn"}, {"compte_local": "n-existe-pas"},
-                      {"groupes": ["Mauvais Nom"]}):
-            with self.subTest(extra=extra), self.assertRaises(ErreurSesame):
-                self.construire(**dict({"compte_local": A}, **extra))
-
-    def test_connexion_par_mot_de_passe_par_defaut(self):
-        c = self.construire(compte_local=A)
-        self.assertEqual(c.connexion, "mot-de-passe")
-        message = actions.configurer(self.m, c)
-        self.assertIn("comme sur Windows", message)
-        broker = self.lire(chemins.BROKER_CONF)
-        self.assertIn("register_device = true\n", broker)
-        self.assertIn("entra_auth = true\n", broker)
-        self.assertIn("device_code = true\n", broker)
-        self.assertIn("connexion = mot-de-passe\n", self.lire(chemins.SESAME_CONF))
-        self.assertEqual(etat.lire(self.m)["configurer"]["connexion"], "mot-de-passe")
-
-    def test_connexion_par_code(self):
-        actions.configurer(self.m, self.construire(compte_local=A, connexion="code"))
-        broker = self.lire(chemins.BROKER_CONF)
-        self.assertIn("register_device = false\n", broker)
-        self.assertIn("entra_auth = false\n", broker)
-        self.assertEqual(etat.lire(self.m)["configurer"]["connexion"], "code")
-        self.assertEqual(self.construire(compte_local=A).connexion, "code")  # le choix enregistré est gardé
-
-    def test_connexion_inconnue(self):
-        with self.assertRaises(ErreurSesame):
-            self.construire(compte_local=A, connexion="windows")
-
-    def test_mot_de_passe_refuse_si_trop_ancien(self):
-        self.m.versions["authd"] = "0.6.9"
-        with self.assertRaises(ErreurSesame) as e:
-            actions.configurer(self.m, self.construire(compte_local=A))
-        self.assertIn("authd 0.6.9 (il faut 0.7.0)", str(e.exception))
-        self.assertIn("Code sur le téléphone", str(e.exception))
-        self.assertFalse(self.existe(chemins.SESAME_CONF))
+    def test_deja_a_ce_nom(self):
+        self.ecrire("/etc/hostname", NOM + "\n")
+        self.assertIn("déjà", actions.changer_nom_machine(self.m, NOM))
         self.assertEqual(self.m.modifiantes(), [])
-        actions.configurer(self.m, self.construire(compte_local=A, connexion="code"))  # le mode code reste possible
+        self.assertEqual(cfg.charger(self.m).nom_machine, NOM)
 
-    def test_module_non_installe(self):
-        self.m.supprimer(chemins.BROKER_MODELE)
+    def test_invalide(self):
+        for faux in ("", "-pc", "pc-", "a" * 16, "12345", "pc_1"):
+            with self.assertRaises(ErreurSesame):
+                actions.changer_nom_machine(self.m, faux)
+        self.assertEqual(self.m.modifiantes(), [])
+
+
+class TestQuitterAd(BaseActions):
+    def test_quitte_le_domaine(self):
+        self.m.domaines_joints = ["cofinacorp.com"]
+        self.ecrire(chemins.NSSWITCH, "passwd: files sss\ngroup: files sss\n")
+        actions.quitter_ad(self.m)
+        self.assertEqual(self.m.domaines_joints, [])
+        self.assertIn(["realm", "leave", "-v", "cofinacorp.com"], self.m.appels)
+        self.assertNotIn("sss", self.lire(chemins.NSSWITCH))
+        self.assertIn("quitter_ad", etat.lire(self.m))
+
+
+class TestOutils(BaseActions):
+    def test_installation_et_plage(self):
+        msg = actions.installer_outils(self.m, A)
+        self.assertIn("outils", msg)
+        self.assertIn(["apt-get", "install", "-y", "podman", "uidmap", "git", "make"], self.m.appels)
+        self.assertIn(["usermod", "--add-subuids", "100000-165535", "--add-subgids", "100000-165535", A],
+                      self.m.appels)
+        self.assertTrue(set(himmelblau.OUTILS) <= self.m.paquets)
+
+    def test_plage_deja_presente(self):
+        self.installer_outils()
+        actions.installer_outils(self.m, A)
+        self.assertFalse(any(a[0] == "usermod" for a in self.m.appels))
+
+    def test_une_seule_des_deux_plages(self):
+        self.ecrire("/etc/subuid", f"{A}:100000:65536\n")
+        actions.installer_outils(self.m, A)
+        self.assertTrue(any(a[0] == "usermod" for a in self.m.appels))
+
+    def test_compte_local_par_defaut_et_inconnu(self):
+        actions.installer_outils(self.m)
+        self.assertIn(A, self.m.appels[-1])
         with self.assertRaises(ErreurSesame):
-            actions.configurer(self.m, self.construire(compte_local=A))
+            actions.installer_outils(self.m, "inconnu")
+
+    def test_echec_du_reseau(self):
+        self.m.panne_a = 0
+        with self.assertRaises(ErreurSesame) as e:
+            actions.installer_outils(self.m, A)
+        self.assertIn("a échoué", str(e.exception))
+
+
+class TestInstaller(BaseActions):
+    def test_installation(self):
+        self.fabriquer_debs()
+        msg = actions.installer(self.m, PAQUETS_DIR)
+        self.assertEqual(msg, "Himmelblau 4.0.1 est installé.")
+        self.assertEqual(self.m.paquets, set(himmelblau.PAQUETS))
+        self.assertEqual(self.sorties_apt(), [["apt-get", "install", "-y"] + [
+            f"{PAQUETS_DIR}/{p}_4.0.1_amd64.deb" for p in himmelblau.PAQUETS]])
+        self.assertIn(["dpkg-deb", "-f", f"{PAQUETS_DIR}/himmelblau_4.0.1_amd64.deb", "Package"], self.m.appels)
+        self.assertIn("installer", etat.lire(self.m))
+
+    def test_dossier_inexistant(self):
+        with self.assertRaises(ErreurSesame) as e:
+            actions.installer(self.m, PAQUETS_DIR)
+        self.assertIn("n'existe pas", str(e.exception))
+        with self.assertRaises(ErreurSesame):
+            actions.installer(self.m, "")
+        self.assertEqual(self.m.modifiantes(), [])
+
+    def test_paquet_manquant(self):
+        self.fabriquer_debs(noms=["himmelblau", "pam-himmelblau"])
+        with self.assertRaises(ErreurSesame) as e:
+            actions.installer(self.m, PAQUETS_DIR)
+        self.assertIn("nss-himmelblau", str(e.exception))
+        self.assertEqual(self.m.modifiantes(), [])
+
+    def test_fichier_qui_n_est_pas_le_bon_paquet(self):
+        self.fabriquer_debs()
+        self.ecrire(f"{PAQUETS_DIR}/nss-himmelblau_4.0.1_amd64.deb", "autre-paquet\n")
+        with self.assertRaises(ErreurSesame) as e:
+            actions.installer(self.m, PAQUETS_DIR)
+        self.assertIn("n'est pas le paquet nss-himmelblau", str(e.exception))
+        self.assertEqual(self.m.modifiantes(), [])
+
+    def test_ubuntu_trop_ancien(self):
+        self.fabriquer_debs()
+        self.ecrire("/etc/os-release", 'VERSION_ID="22.04"\n')
+        with self.assertRaises(ErreurSesame):
+            actions.installer(self.m, PAQUETS_DIR)
+
+    def test_apparmor_present(self):
+        self.fabriquer_debs(noms=himmelblau.PAQUETS + ["himmelblau-apparmor"])
+        self.ecrire("/sys/module/apparmor/version", "3\n")
+        actions.installer(self.m, PAQUETS_DIR)
+        self.assertIn(["apt-get", "install", "-y", f"{PAQUETS_DIR}/himmelblau-apparmor_4.0.1_amd64.deb"],
+                      self.m.appels)
+        self.assertIn("himmelblau-apparmor", self.m.paquets)
+
+    def test_apparmor_non_construit_ou_absent(self):
+        self.fabriquer_debs(noms=himmelblau.PAQUETS + ["himmelblau-apparmor"])
+        actions.installer(self.m, PAQUETS_DIR)  # AppArmor absent du poste
+        self.assertNotIn("himmelblau-apparmor", self.m.paquets)
+        self.ecrire("/sys/module/apparmor/version", "3\n")
+        self.m.paquets.clear()
+        self.m.supprimer(f"{PAQUETS_DIR}/himmelblau-apparmor_4.0.1_amd64.deb")
+        actions.installer(self.m, PAQUETS_DIR)  # AppArmor présent mais paquet non construit
+        self.assertNotIn("himmelblau-apparmor", self.m.paquets)
+
+    def test_apparmor_echec_tolere(self):
+        self.fabriquer_debs(noms=himmelblau.PAQUETS + ["himmelblau-apparmor"])
+        self.ecrire("/sys/module/apparmor/version", "3\n")
+        self.m.apparmor_echoue = True
+        actions.installer(self.m, PAQUETS_DIR)
+        self.assertIn("avertissement", [t for t, _ in self.m.evenements])
+
+    def test_echec_de_l_installation(self):
+        self.fabriquer_debs()
+        self.m.panne_a = 0
+        with self.assertRaises(ErreurSesame) as e:
+            actions.installer(self.m, PAQUETS_DIR)
+        self.assertIn("a échoué", str(e.exception))
+        self.assertIn("Relancer", str(e.exception))
+
+
+class TestConfigurer(BaseActions):
+    def setUp(self):
+        super().setUp()
+        self.installer_himmelblau(lier=False)
+
+    def test_configuration(self):
+        msg = actions.configurer(self.m, N, A)
+        self.assertIn(A, msg)
+        conf = self.lire(himmelblau.CONFIG)
+        self.assertEqual(himmelblau.lire_config(conf, "domain"), "cofinacorp.com")
+        self.assertEqual(himmelblau.lire_config(conf, "user_map_file"), himmelblau.USER_MAP)
+        self.assertEqual(self.lire(himmelblau.USER_MAP), f"{A}:{N}\n")
+        self.assertIn(["systemctl", "enable", "--now", "himmelblaud", "himmelblaud-tasks"], self.m.appels)
+        self.assertIn(["systemctl", "restart", "himmelblaud", "himmelblaud-tasks"], self.m.appels)
+        self.assertTrue(self.m.service_actif("himmelblaud"))
+        c = cfg.charger(self.m)
+        self.assertEqual((c.compte, c.compte_local, c.uid, c.dossier), (N, A, 1000, "/home/" + A))
+        self.assertNotIn("avertissement", [t for t, _ in self.m.evenements])
+        self.assertIn("configurer", etat.lire(self.m))
+
+    def test_himmelblau_conf_existant_preserve(self):
+        self.ecrire(himmelblau.CONFIG, "[global]\nlog_level = debug\ndomain = vieux.fr\n[autre]\nx = 1\n")
+        actions.configurer(self.m, N, A)
+        conf = self.lire(himmelblau.CONFIG)
+        self.assertIn("log_level = debug", conf)
+        self.assertIn("[autre]\nx = 1", conf)
+        self.assertNotIn("vieux.fr", conf)
+        self.assertEqual(self.lire(himmelblau.CONFIG + ".sesame-origine"),
+                         "[global]\nlog_level = debug\ndomain = vieux.fr\n[autre]\nx = 1\n")
+        actions.configurer(self.m, N, A)  # la copie d'origine n'est pas écrasée
+        self.assertIn("vieux.fr", self.lire(himmelblau.CONFIG + ".sesame-origine"))
+
+    def test_pas_de_copie_si_pas_de_fichier(self):
+        actions.configurer(self.m, N, A)
+        self.assertFalse(self.existe(himmelblau.CONFIG + ".sesame-origine"))
+
+    def test_user_map_remplace_la_ligne_du_compte(self):
+        self.ecrire(himmelblau.USER_MAP, f"# liens\nautre:autre@x.com\n{A}:ancien@x.com\n")
+        actions.configurer(self.m, N, A)
+        self.assertEqual(self.lire(himmelblau.USER_MAP), f"# liens\nautre:autre@x.com\n{A}:{N}\n")
+
+    def test_adresse_en_majuscules_normalisee(self):
+        actions.configurer(self.m, " Charles.Gamligo@CofinaCorp.com ", A)
+        self.assertEqual(self.lire(himmelblau.USER_MAP), f"{A}:{N}\n")
+
+    def test_compte_local_par_defaut(self):
+        actions.configurer(self.m, N)
+        self.assertEqual(himmelblau.lire_user_map(self.lire(himmelblau.USER_MAP)), {A: N})
+
+    def test_compte_local_de_l_appelant(self):
+        self.ecrire("/etc/passwd", self.lire("/etc/passwd") + "autre:x:1002:1002::/home/autre:/bin/bash\n")
+        self.m.env["PKEXEC_UID"] = "1002"
+        actions.configurer(self.m, N)
+        self.assertEqual(himmelblau.lire_user_map(self.lire(himmelblau.USER_MAP)), {"autre": N})
+
+    def test_avertit_si_nss_ou_pam_manquent(self):
+        self.ecrire(chemins.NSSWITCH, "passwd: files\ngroup: files\n")
+        self.ecrire(chemins.PAM_COMMON_AUTH, "auth pam_unix.so\n")
+        actions.configurer(self.m, N, A)
+        avertissements = [t for ty, t in self.m.evenements if ty == "avertissement"]
+        self.assertEqual(len(avertissements), 2)
+        self.assertTrue(self.lire(himmelblau.USER_MAP))  # la configuration est écrite malgré tout
+
+    def test_erreurs(self):
+        for args in (("pas-une-adresse", A), (N, "inconnu")):
+            with self.assertRaises(ErreurSesame):
+                actions.configurer(self.m, *args)
+        self.m.paquets.discard("nss-himmelblau")
+        with self.assertRaises(ErreurSesame) as e:
+            actions.configurer(self.m, N, A)
+        self.assertIn("nss-himmelblau", str(e.exception))
+        self.assertEqual(self.m.modifiantes(), [])
+        self.assertFalse(self.existe(himmelblau.USER_MAP))
+
+
+class TestRejoindre(BaseActions):
+    def evenements_de(self, type_):
+        return [t for ty, t in self.m.evenements if ty == type_]
+
+    def etapes_vues(self):
+        return self.evenements_de("etape")
+
+    def test_preparation_sur_machine_vierge_avec_domaine_ad(self):
+        self.peupler(secours=False)
+        self.m.domaines_joints = ["cofinacorp.com"]
+        self.ecrire(chemins.NSSWITCH, "passwd: files systemd sss\ngroup: files systemd sss\n")
+        message = actions.rejoindre(self.m, N, NOM)
+        self.assertEqual(message, "Préparation terminée : Himmelblau doit maintenant être compilé.")
+        self.assertEqual(self.evenements_de("compilation_requise"), [""])
+        self.assertTrue(etat.derniere_sauvegarde(self.m))
+        self.assertIn("secours", self.m.groupes_locaux()["sudo"].membres)
+        self.assertEqual(self.m.empreintes["secours"], EMPREINTE)
+        self.assertEqual(self.lire("/etc/hostname"), NOM + "\n")
+        self.assertEqual(self.m.domaines_joints, [])
+        self.assertTrue(set(himmelblau.OUTILS) <= self.m.paquets)
+        self.assertFalse(set(himmelblau.PAQUETS) & self.m.paquets)
+        self.assertFalse(self.existe(himmelblau.USER_MAP))
+        self.assertNotIn("rejoindre", etat.lire(self.m))
+        self.assertEqual(cfg.charger(self.m).nom_machine, NOM)
+
+    def test_dossier_attendu_dans_l_evenement_et_enregistre(self):
+        self.peupler()
+        actions.rejoindre(self.m, N, NOM, paquets=PAQUETS_DIR)  # dossier absent : compilation requise
+        self.assertEqual(self.evenements_de("compilation_requise"), [PAQUETS_DIR])
+        self.assertEqual(cfg.charger(self.m).dossier_compilation, DOSSIER_COMPIL)
+
+    def test_dossier_incomplet_demande_la_compilation(self):
+        self.peupler()
+        self.fabriquer_debs(noms=["himmelblau", "pam-himmelblau"])
+        message = actions.rejoindre(self.m, N, NOM, paquets=PAQUETS_DIR)
+        self.assertIn("compilé", message)
+        self.assertFalse(set(himmelblau.PAQUETS) & self.m.paquets)
+
+    def test_rejoindre_complet_avec_les_paquets(self):
+        self.peupler(secours=False)
+        self.m.domaines_joints = ["cofinacorp.com"]
+        self.fabriquer_debs()
+        message = actions.rejoindre(self.m, N, NOM, paquets=PAQUETS_DIR)
+        self.assertTrue(message.startswith(f"Le poste {NOM} est prêt. Déconnectez-vous, choisissez votre compte "
+                                           "à l'écran d'accueil, tapez le mot de passe Entra de " + N))
+        self.assertIn("code PIN (Windows Hello)", message)
+        self.assertEqual(self.evenements_de("compilation_requise"), [])
+        self.assertTrue(set(himmelblau.PAQUETS) <= self.m.paquets)
+        self.assertEqual(self.lire(himmelblau.USER_MAP), f"{A}:{N}\n")
+        self.assertTrue(self.m.service_actif("himmelblaud"))
+        c = cfg.charger(self.m)
+        self.assertEqual((c.compte, c.compte_local, c.secours, c.nom_machine, c.dossier_compilation),
+                         (N, A, "secours", NOM, DOSSIER_COMPIL))
+        self.assertFalse(any("déjà fait" in t for t in self.etapes_vues() if "domaine" not in t.lower()))
+        self.assertIn("rejoindre", etat.lire(self.m))
+
+    def test_ordre_des_commandes(self):
+        self.peupler(secours=False)
+        self.fabriquer_debs()
+        actions.rejoindre(self.m, N, NOM, paquets=PAQUETS_DIR)
+        noms = [" ".join(a[:2]) if a[0] in ("chpasswd", "apt-get") else a[0] for a in self.m.modifiantes()]
+        dernier = len(noms) - 1 - noms[::-1].index("systemctl")
+        ordre = [noms.index(x) for x in ("useradd", "chpasswd -e", "hostnamectl", "apt-get install")]
+        ordre += [dernier]
+        self.assertEqual(ordre, sorted(ordre))
+        # les outils (premier apt-get) avant les paquets compilés (deuxième)
+        apt = [a for a in self.m.modifiantes() if a[0] == "apt-get"]
+        self.assertEqual(apt[0][3:], list(himmelblau.OUTILS))
+        self.assertTrue(apt[1][3].endswith(".deb"))
+
+    def test_relance_apres_compilation(self):
+        self.peupler(secours=False)
+        actions.rejoindre(self.m, N, NOM)
+        n = len(self.m.modifiantes())
+        self.m.evenements.clear()
+        self.fabriquer_debs()
+        actions.rejoindre(self.m, N, NOM, paquets=PAQUETS_DIR)
+        vues = self.etapes_vues()
+        for debut in ("Sauvegarde", "Compte de secours", "Nom de la machine", "Outils de compilation"):
+            self.assertTrue(any(t.startswith(debut) and t.endswith("déjà fait") for t in vues), debut)
+        self.assertFalse(any(a[0] in ("useradd", "hostnamectl") for a in self.m.modifiantes()[n:]))
+        self.assertEqual(self.lire(himmelblau.USER_MAP), f"{A}:{N}\n")
+
+    def test_relance_apres_echec_d_installation(self):
+        self.peupler(secours=False)
+        self.m.domaines_joints = ["cofinacorp.com"]
+        self.fabriquer_debs()
+        # commandes modifiantes : useradd, chpasswd -e, hostnamectl, realm leave, systemctl disable sssd,
+        # pam-auth-update, apt-get outils (6), usermod subuids (7), apt-get install des .deb (8)
+        self.m.panne_a = 8
+        with self.assertRaises(ErreurSesame) as e:
+            actions.rejoindre(self.m, N, NOM, paquets=PAQUETS_DIR)
+        self.assertIn("a échoué", str(e.exception))
+        self.assertFalse(set(himmelblau.PAQUETS) <= self.m.paquets)
+        self.assertFalse(self.existe(himmelblau.USER_MAP))
+        self.m.panne_a = None
+        self.m.evenements.clear()
+        n = len(self.m.modifiantes())
+        actions.rejoindre(self.m, N, NOM, paquets=PAQUETS_DIR)
+        vues = self.etapes_vues()
+        self.assertTrue(any(t.startswith("Sauvegarde") and t.endswith("déjà fait") for t in vues))
+        self.assertTrue(any(t.startswith("Outils") and t.endswith("déjà fait") for t in vues))
+        self.assertFalse(any(t.startswith("Installation") and "déjà" in t for t in vues))
+        self.assertFalse(any(a[0] in ("useradd", "usermod") for a in self.m.modifiantes()[n:]))
+        self.assertEqual(sum(1 for a in self.m.modifiantes() if a[:2] == ["realm", "leave"]), 1)
+        self.assertEqual(self.lire(himmelblau.USER_MAP), f"{A}:{N}\n")
+
+    def test_deuxieme_passage_saute_tout(self):
+        self.peupler(secours=False)
+        self.fabriquer_debs()
+        actions.rejoindre(self.m, N, NOM, paquets=PAQUETS_DIR)
+        avant = len(self.m.modifiantes())
+        self.m.evenements.clear()
+        actions.rejoindre(self.m, N, NOM, paquets=PAQUETS_DIR)
+        self.assertTrue(all("déjà fait" in t for t in self.etapes_vues()), self.etapes_vues())
+        self.assertEqual(len(self.m.modifiantes()), avant)
+
+    def verifie_rien_modifie(self, *args, **kw):
+        with self.assertRaises(ErreurSesame):
+            actions.rejoindre(self.m, *args, **kw)
+        self.assertEqual(self.m.modifiantes(), [])
         self.assertFalse(self.existe(chemins.SESAME_CONF))
+        self.assertFalse(self.existe(chemins.SAUVEGARDES))
+
+    def test_validation_avant_toute_modification(self):
+        self.peupler(secours=False)
+        self.verifie_rien_modifie(N, "-mauvais")
+        self.verifie_rien_modifie(N, "a" * 16)
+        self.verifie_rien_modifie(N, "12345")
+        self.verifie_rien_modifie("pas-une-adresse", NOM)
+        self.verifie_rien_modifie(N, NOM, compte_local="inconnu")
+        self.ecrire("/etc/shadow", f"{A}:!:19000:0:99999:7:::\n")  # mot de passe non copiable
+        self.verifie_rien_modifie(N, NOM)
+        self.ecrire("/etc/shadow", f"{A}:{EMPREINTE}:19000:0:99999:7:::\n")
+        self.ecrire("/etc/os-release", 'VERSION_ID="22.04"\n')
+        self.verifie_rien_modifie(N, NOM)
+        self.assertEqual(self.lire("/etc/hostname"), "ubuntu-pc\n")
+
+    def test_himmelblau_deja_installe_n_exige_pas_de_paquets(self):
+        self.peupler()
+        self.installer_himmelblau(lier=False)
+        actions.rejoindre(self.m, N, NOM)
+        self.assertEqual(self.evenements_de("compilation_requise"), [])
+        self.assertEqual(self.lire(himmelblau.USER_MAP), f"{A}:{N}\n")
+        self.assertFalse(any(a[:3] == ["apt-get", "install", "-y"] and a[3].endswith(".deb") for a in self.m.appels))
+
+    def test_compte_local_choisi(self):
+        self.peupler()
+        self.installer_himmelblau(lier=False)
+        self.ecrire("/etc/passwd", self.lire("/etc/passwd") + "autre:x:1002:1002::/home/autre:/bin/bash\n")
+        actions.rejoindre(self.m, N, NOM, compte_local="autre")
+        self.assertEqual(himmelblau.lire_user_map(self.lire(himmelblau.USER_MAP)), {"autre": N})
+
+    def test_changement_d_adresse_refait_la_liaison(self):
+        self.peupler()
+        self.fabriquer_debs()
+        actions.rejoindre(self.m, N, NOM, paquets=PAQUETS_DIR)
+        actions.rejoindre(self.m, "autre.adresse@exemple.org", NOM, paquets=PAQUETS_DIR)
+        self.assertEqual(self.lire(himmelblau.USER_MAP), f"{A}:autre.adresse@exemple.org\n")
+        self.assertEqual(himmelblau.lire_config(self.lire(himmelblau.CONFIG), "domain"), "exemple.org")
+
+
+class TestPremiereConnexionEtDesactiver(BaseActions):
+    def test_noter(self):
+        actions.noter_premiere_connexion(self.m)
+        self.assertIn("date", etat.lire(self.m)["premiere_connexion"])
 
     def test_desactiver(self):
-        actions.configurer(self.m, self.construire(compte_local=A))
-        self.m.appels.clear()
-        actions.desactiver(self.m)
-        self.assertFalse(self.existe(chemins.BROKER_AUTHD))
-        self.assertEqual(self.m.appels, [["systemctl", "restart", "authd"]])
+        self.config()
+        self.installer_himmelblau()
+        self.ecrire(himmelblau.USER_MAP, f"autre:a@x.com\n{A}:{N}\n")
+        self.ecrire("/usr/share/pam-configs/himmelblau", "Name: Himmelblau\nAuth: pam_himmelblau.so\n")
+        etat.noter(self.m, "configurer", {"date": "x"})
+        msg = actions.desactiver(self.m)
+        self.assertIn("rien n'est désinstallé", msg)
+        self.assertEqual(self.lire(himmelblau.USER_MAP), "autre:a@x.com\n")
+        self.assertIn(["pam-auth-update", "--disable", "himmelblau"], self.m.appels)
+        self.assertIn(["systemctl", "disable", "--now", "himmelblaud", "himmelblaud-tasks"], self.m.appels)
+        self.assertFalse(self.m.service_actif("himmelblaud"))
+        self.assertTrue(set(himmelblau.PAQUETS) <= self.m.paquets)
+        self.assertTrue(self.existe(himmelblau.CONFIG))
+        self.assertNotIn("configurer", etat.lire(self.m))
+        self.assertNotIn("pam_himmelblau", self.lire(chemins.PAM_COMMON_AUTH))
 
-    def test_noter_verification(self):
-        actions.noter_verification(self.m)
-        self.assertIn("date", etat.lire(self.m)["verification"])
-        self.assertEqual(self.m.appels, [])
+    def test_desactiver_puis_rejoindre_retablit_tout(self):
+        self.peupler()
+        self.fabriquer_debs()
+        actions.rejoindre(self.m, N, NOM, paquets=PAQUETS_DIR)
+        actions.desactiver(self.m)
+        actions.rejoindre(self.m, N, NOM, paquets=PAQUETS_DIR)
+        self.assertEqual(self.lire(himmelblau.USER_MAP), f"{A}:{N}\n")
+        self.assertTrue(self.m.service_actif("himmelblaud"))
+        self.assertIn("pam_himmelblau", self.lire(chemins.PAM_COMMON_AUTH))  # PAM rétabli
+        self.assertIn(["pam-auth-update", "--enable", "himmelblau"], self.m.appels)

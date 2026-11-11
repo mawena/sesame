@@ -1,0 +1,15 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ]; then
+    # Mise à jour depuis la 1.x : la reprise du compte au démarrage n'existe plus.
+    rm -f /var/lib/sesame/reprise-programmee
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl disable sesame-reprise.service >/dev/null 2>&1 || true
+    fi
+    rm -f /etc/systemd/system/multi-user.target.wants/sesame-reprise.service
+fi
+
+#DEBHELPER#
+
+exit 0

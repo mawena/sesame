@@ -1,4 +1,4 @@
-"""Dialogues de l'assistant : secours, première connexion, reprise, guide du portail, vérification."""
+"""Dialogues de l'assistant : secours, première connexion, confirmation, vérification."""
 import gi
 
 gi.require_version('Gtk', '4.0')
@@ -53,105 +53,44 @@ def secours(parent, nom, rappel):
     d.present(parent)
 
 
-def texte_premiere_connexion(compte, connexion='mot-de-passe'):
-    """Marche à suivre à l'écran de connexion, selon le mode de connexion."""
-    debut = ('1. Fermez la session, puis, à l’écran de connexion, choisissez « Non listé ? ».\n'
-             '2. Saisissez votre adresse pro%s.\n'
-             '3. Choisissez « Microsoft Entra ID ».\n') % (' (%s)' % compte if compte else '')
-    if connexion == 'code':
-        suite = ('4. Scannez le QR code ou saisissez le code sur votre téléphone, et validez la connexion.\n'
-                 '5. Choisissez un mot de passe local : il servira à déverrouiller la session.\n\n')
-    else:
-        suite = ('4. Tapez votre mot de passe Entra, puis validez sur votre téléphone (Microsoft Authenticator '
-                 'ou code), comme sur Windows.\n'
-                 '5. Le poste est inscrit dans Entra et votre session s’ouvre. Si vous vous êtes connecté sans '
-                 'mot de passe (clé de sécurité, Authenticator), choisissez un mot de passe local.\n\n')
-    return debut + suite + 'Ensuite, revenez ici : l’étape sera cochée.'
+def texte_premiere_connexion(compte):
+    """Marche à suivre à l'écran de connexion."""
+    return ('1. Déconnectez-vous (fermez la session).\n'
+            '2. À l’écran d’accueil, choisissez votre compte.\n'
+            '3. Tapez le mot de passe Entra de %s, puis validez sur votre téléphone (Microsoft Authenticator), '
+            'comme sur Windows.\n'
+            '4. Le poste est inscrit dans Entra à cette première connexion ; choisissez ensuite un code PIN '
+            '(Windows Hello) pour les connexions suivantes.') % (compte or 'votre adresse pro')
 
 
-def premiere_connexion(parent, compte, rappel_vu=None, connexion='mot-de-passe'):
-    """Explique la première connexion par Entra, avec un bouton pour fermer la session."""
-    corps = texte_premiere_connexion(compte, connexion)
-    d = _alerte('Première connexion par Entra', corps,
-                [('plus-tard', 'Plus tard', None), ('fermer', 'Fermer la session', Adw.ResponseAppearance.SUGGESTED)],
-                'plus-tard', 'plus-tard')
+def premiere_connexion(parent, compte, rappel_fait=None):
+    """Explique la première connexion par Entra : plus tard, déconnexion, ou « c'est fait »."""
+    d = _alerte('Première connexion par Entra', texte_premiere_connexion(compte),
+                [('plus-tard', 'Plus tard', None), ('fait', 'J’ai fait ma première connexion', None),
+                 ('fermer', 'Se déconnecter', Adw.ResponseAppearance.SUGGESTED)], 'fermer', 'plus-tard')
 
     def reponse(_d, r):
         if r == 'fermer':
             lanceur.fermer_session()
+        elif r == 'fait' and rappel_fait:
+            rappel_fait()
     d.connect('response', reponse)
     d.present(parent)
 
 
-def reprise(parent, compte_local, compte, peut_maintenant, rappel):
-    """Dialogue destructif de la reprise ; rappel('au-demarrage' | 'maintenant')."""
-    corps = ('Le compte local « %s » sera supprimé de la liste des comptes, et le compte Entra « %s » le remplacera avec '
-             'le même identifiant, le même dossier personnel, les mêmes groupes et la même crontab. Une sauvegarde est '
-             'faite avant, et tout est annulé automatiquement si une erreur survient.\n\n'
-             'Recommandé : « Au prochain démarrage ». La reprise se fait avant l’écran de connexion, quand aucun '
-             'programme ne tourne.') % (compte_local or '?', compte or '?')
-    reponses = [('annuler', 'Annuler', None)]
-    if peut_maintenant:
-        reponses.append(('maintenant', 'Maintenant', Adw.ResponseAppearance.DESTRUCTIVE))
-    reponses.append(('demarrage', 'Au prochain démarrage', Adw.ResponseAppearance.SUGGESTED))
-    d = _alerte('Reprendre le compte local ?', corps, reponses, 'demarrage')
-    d.connect('response', lambda _d, r: rappel('au-demarrage' if r == 'demarrage' else 'maintenant') if r in ('demarrage', 'maintenant') else None)
-    d.present(parent)
-
-
-def proposer_redemarrage(parent, rappel_erreur):
-    """Après une reprise programmée : propose de redémarrer tout de suite."""
-    d = _alerte('Reprise programmée', 'La reprise du compte aura lieu au prochain démarrage du poste. '
-                'Enregistrez votre travail, puis redémarrez quand vous voulez.',
-                [('plus-tard', 'Plus tard', None), ('redemarrer', 'Redémarrer maintenant', Adw.ResponseAppearance.SUGGESTED)],
-                'plus-tard', 'plus-tard')
-    d.connect('response', lambda _d, r: lanceur.redemarrer(rappel_erreur) if r == 'redemarrer' else None)
-    d.present(parent)
-
-
 def confirmer(parent, titre, corps, libelle, rappel, destructif=True):
-    """Confirmation simple d'une action (désactiver, annuler la reprise…)."""
+    """Confirmation simple d'une action (désactiver…)."""
     apparence = Adw.ResponseAppearance.DESTRUCTIVE if destructif else Adw.ResponseAppearance.SUGGESTED
     d = _alerte(titre, corps, [('annuler', 'Annuler', None), ('ok', libelle, apparence)], 'annuler')
     d.connect('response', lambda _d, r: rappel() if r == 'ok' else None)
     d.present(parent)
 
 
-def _ouvrir_url(parent, url):
+def ouvrir_url(parent, url):
     if hasattr(Gtk, 'UriLauncher'):
         Gtk.UriLauncher.new(url).launch(parent, None, lambda *_: None)
     else:  # pragma: no cover : GTK < 4.10
         Gtk.show_uri(parent, url, 0)
-
-
-def guide_portail(parent, coeur):
-    """Les étapes de la création de l'application dans le portail Entra, avec un bouton qui ouvre le portail."""
-    d = Adw.Dialog(title='Créer l’application dans Entra', content_width=560, content_height=680)
-    vue = Adw.ToolbarView()
-    vue.add_top_bar(Adw.HeaderBar())
-    page = Adw.PreferencesPage()
-    intro = Adw.PreferencesGroup(description='Faites-le une fois, avec un compte administrateur de l’annuaire. À la fin, '
-                                 'copiez l’ID du locataire et l’ID client dans l’assistant.')
-    page.add(intro)
-    groupe = Adw.PreferencesGroup(title='Étapes')
-    for n, element in enumerate(coeur.guide.PORTAIL, 1):
-        titre, detail = (element if isinstance(element, (tuple, list)) else (element.get('titre', ''), element.get('detail', '')))
-        ligne = Adw.ActionRow(title=GLib.markup_escape_text(titre), subtitle=GLib.markup_escape_text(detail),
-                              subtitle_selectable=True, subtitle_lines=0, title_lines=0)
-        numero = Gtk.Label(label=str(n), valign=Gtk.Align.START, margin_top=14)
-        numero.add_css_class('dim-label')
-        numero.add_css_class('numeric')
-        ligne.add_prefix(numero)
-        groupe.add(ligne)
-    page.add(groupe)
-    vue.set_content(page)
-    bouton = Gtk.Button(label='Ouvrir le portail Entra', halign=Gtk.Align.CENTER, margin_top=12, margin_bottom=12)
-    bouton.add_css_class('suggested-action')
-    bouton.add_css_class('pill')
-    bouton.connect('clicked', lambda *_: _ouvrir_url(parent, coeur.guide.URL_PORTAIL))
-    vue.add_bottom_bar(bouton)
-    d.set_child(vue)
-    d.present(parent)
 
 
 def verification(parent, controles, rappel_noter):
