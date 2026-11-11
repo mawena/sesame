@@ -72,10 +72,11 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 
 - [x] Machine renommée `LPCFNTG-00111`, sortie du domaine AD par Sésame (11/11/2026)
 - [x] Étude : authd exige une application dans Entra ; Himmelblau (mode natif + `user_map_file`) n'en demande pas
-- [x] Choix du dépôt stable Himmelblau sur abonnement ; conception 2.0.0 (la 1.2.0 avec authd est abandonnée)
-- [ ] Cœur et assistant root : dépôt avec jeton, installation, configuration, relier le compte local, nom de la machine, secours
-- [ ] Assistant graphique : page « Rejoindre » (adresse pro, nom de la machine, jeton), détails, désactiver
+- [x] Choix : Himmelblau stable-4.x compilé sur le poste (gratuit) ; conception 2.0.0 (la 1.2.0 avec authd est abandonnée)
+- [ ] Cœur et assistant root : outils, installation des paquets compilés, configuration, relier le compte local, nom de la machine, secours
+- [ ] Compilation de Himmelblau stable-4.x sous l'utilisateur (podman, file Gagarine), mise à jour
+- [ ] Assistant graphique : page « Rejoindre » (adresse pro, nom de la machine), compilation, détails, mise à jour, désactiver
 - [ ] Ligne de commande `sesame rejoindre`, documentation
 - [ ] Tests par la file Gagarine
 - [ ] Release 2.0.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
-- [ ] Jeton d'abonnement Himmelblau (Charles), mise à jour sur le poste, première connexion Entra
+- [ ] Mise à jour sur le poste, compilation de Himmelblau, première connexion Entra
