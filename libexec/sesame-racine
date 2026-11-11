@@ -1,0 +1,16 @@
+#!/usr/bin/python3
+"""Lanceur de l'assistant root de Sésame (lancé par pkexec).
+
+Installé dans /usr/libexec/sesame, il cherche le paquet dans /usr/share/sesame ; lancé depuis le dépôt, dans le
+dossier parent de libexec/.
+"""
+import os
+import sys
+
+_ici = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, '/usr/share/sesame' if _ici == '/usr/libexec/sesame' else os.path.dirname(_ici))
+
+from sesame.racine import main  # noqa: E402
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
