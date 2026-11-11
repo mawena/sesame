@@ -68,15 +68,14 @@ Connexion à Ubuntu par Microsoft Entra ID (authd), avec reprise du compte local
 - [x] Release 1.1.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
 - [x] Mise à jour sur le poste
 
-## Phase 9 — Sésame 1.2.0 : rejoindre Entra comme un PC Windows
+## Phase 9 — Sésame 2.0.0 : rejoindre Entra comme un PC Windows, avec Himmelblau
 
 - [x] Machine renommée `LPCFNTG-00111`, sortie du domaine AD par Sésame (11/11/2026)
-- [x] Étude : client « Microsoft Graph Command Line Tools » (code à usage unique vérifié), authd absent de GitHub
-- [x] Feature git flow `rejoindre-entra`, conception 1.2.0
-- [ ] `sesame/entra.py` : connexion Microsoft (PKCE, code à usage unique), création de l'application « Ubuntu authd »
-- [ ] Assistant root `rejoindre` : secours avec le mot de passe actuel, nom de la machine, reprise en attente
-- [ ] Assistant graphique : page « Rejoindre », fenêtre de connexion Microsoft, mode avancé, rappel après la première connexion
-- [ ] `sesame rejoindre` en ligne de commande, documentation
+- [x] Étude : authd exige une application dans Entra ; Himmelblau (mode natif + `user_map_file`) n'en demande pas
+- [x] Choix du dépôt stable Himmelblau sur abonnement ; conception 2.0.0 (la 1.2.0 avec authd est abandonnée)
+- [ ] Cœur et assistant root : dépôt avec jeton, installation, configuration, relier le compte local, nom de la machine, secours
+- [ ] Assistant graphique : page « Rejoindre » (adresse pro, nom de la machine, jeton), détails, désactiver
+- [ ] Ligne de commande `sesame rejoindre`, documentation
 - [ ] Tests par la file Gagarine
-- [ ] Release 1.2.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
-- [ ] Mise à jour sur le poste
+- [ ] Release 2.0.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
+- [ ] Jeton d'abonnement Himmelblau (Charles), mise à jour sur le poste, première connexion Entra
