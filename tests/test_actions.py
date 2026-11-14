@@ -114,11 +114,11 @@ class TestNomMachine(BaseActions):
 
 class TestQuitterAd(BaseActions):
     def test_quitte_le_domaine(self):
-        self.m.domaines_joints = ["cofinacorp.com"]
+        self.m.domaines_joints = ["acmecorp.com"]
         self.ecrire(chemins.NSSWITCH, "passwd: files sss\ngroup: files sss\n")
         actions.quitter_ad(self.m)
         self.assertEqual(self.m.domaines_joints, [])
-        self.assertIn(["realm", "leave", "-v", "cofinacorp.com"], self.m.appels)
+        self.assertIn(["realm", "leave", "-v", "acmecorp.com"], self.m.appels)
         self.assertNotIn("sss", self.lire(chemins.NSSWITCH))
         self.assertIn("quitter_ad", etat.lire(self.m))
 
@@ -344,7 +344,7 @@ class TestConfigurer(BaseActions):
         msg = actions.configurer(self.m, N, A)
         self.assertIn(A, msg)
         conf = self.lire(himmelblau.CONFIG)
-        self.assertEqual(himmelblau.lire_config(conf, "domain"), "cofinacorp.com")
+        self.assertEqual(himmelblau.lire_config(conf, "domain"), "acmecorp.com")
         self.assertEqual(himmelblau.lire_config(conf, "user_map_file"), himmelblau.USER_MAP)
         self.assertEqual(self.lire(himmelblau.USER_MAP), f"{A}:{N}\n")
         self.assertIn(["systemctl", "enable", "--now", "himmelblaud", "himmelblaud-tasks"], self.m.appels)
@@ -445,7 +445,7 @@ class TestConfigurer(BaseActions):
         self.assertEqual(self.lire(himmelblau.USER_MAP), f"# liens\nautre:autre@x.com\n{A}:{N}\n")
 
     def test_adresse_en_majuscules_normalisee(self):
-        actions.configurer(self.m, " Charles.Gamligo@CofinaCorp.com ", A)
+        actions.configurer(self.m, " Charles.Gamligo@AcmeCorp.com ", A)
         self.assertEqual(self.lire(himmelblau.USER_MAP), f"{A}:{N}\n")
 
     def test_compte_local_par_defaut(self):
@@ -498,7 +498,7 @@ class TestRejoindre(BaseActions):
 
     def test_preparation_sur_machine_vierge_avec_domaine_ad(self):
         self.peupler(secours=False)
-        self.m.domaines_joints = ["cofinacorp.com"]
+        self.m.domaines_joints = ["acmecorp.com"]
         self.ecrire(chemins.NSSWITCH, "passwd: files systemd sss\ngroup: files systemd sss\n")
         message = actions.rejoindre(self.m, N, NOM)
         self.assertEqual(message, "Préparation terminée : Himmelblau doit maintenant être compilé.")
@@ -529,7 +529,7 @@ class TestRejoindre(BaseActions):
 
     def test_rejoindre_complet_avec_les_paquets(self):
         self.peupler(secours=False)
-        self.m.domaines_joints = ["cofinacorp.com"]
+        self.m.domaines_joints = ["acmecorp.com"]
         self.fabriquer_debs()
         message = actions.rejoindre(self.m, N, NOM, paquets=PAQUETS_DIR)
         self.assertTrue(message.startswith(f"Le poste {NOM} est prêt. Déconnectez-vous, choisissez votre compte "
@@ -574,7 +574,7 @@ class TestRejoindre(BaseActions):
 
     def test_relance_apres_echec_d_installation(self):
         self.peupler(secours=False)
-        self.m.domaines_joints = ["cofinacorp.com"]
+        self.m.domaines_joints = ["acmecorp.com"]
         self.fabriquer_debs()
         # commandes modifiantes : useradd, chpasswd -e, hostnamectl, realm leave, systemctl disable sssd,
         # systemctl reset-failed, pam-auth-update, apt-get outils (7), usermod subuids (8), apt-get install des .deb (9)
