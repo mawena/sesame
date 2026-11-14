@@ -27,7 +27,7 @@ Doc d'authd : <https://ubuntu.com/docs/authd/stable-docs/> (installation, config
   faite. La reprise du compte s'annule automatiquement si elle échoue, et aussi à la main (`sesame annuler-reprise`).
 - La reprise du compte se fait de préférence **au prochain démarrage**, par un service systemd qui tourne avant
   l'écran de connexion et avant toute session : à ce moment, aucun programme ne tourne sous l'un des deux comptes.
-- Le paquet est **générique** : rien n'est propre à Charles ou à Cofina. Les valeurs (domaine AD, compte local, groupes,
+- Le paquet est **générique** : rien n'est propre à un poste ou à une entreprise. Les valeurs (domaine AD, compte local, groupes,
   UPN suggéré) sont détectées sur le poste et modifiables.
 - Le paquet ne fait pas : la création de l'application dans le portail Entra (il l'explique pas à pas, avec un lien
   vers le portail) ; l'inscription de l'appareil dans Entra (`register_device = false`) ; plusieurs comptes Entra

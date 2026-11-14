@@ -50,7 +50,7 @@ class TestStatuts(BaseEtapes):
 
     def test_quitter_ad(self):
         self.assertEqual(self.statut("quitter_ad"), "sans_objet")
-        self.m.domaines_joints = ["cofinacorp.com"]
+        self.m.domaines_joints = ["acmecorp.com"]
         self.assertEqual(self.statut("quitter_ad"), "a_faire")
         self.m.domaines_joints = []
         self.ecrire(chemins.NSSWITCH, "passwd: files sss\n")
