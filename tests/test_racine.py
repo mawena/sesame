@@ -173,7 +173,7 @@ class TestSousCommandes(BaseRacine):
         self.assertIn("installé", evts[-1]["message"])
 
     def test_quitter_ad(self):
-        self.m.domaines_joints = ["cofinacorp.com"]
+        self.m.domaines_joints = ["acmecorp.com"]
         self.assertEqual(self.evenements("quitter-ad")[0], 0)
         self.assertEqual(self.m.domaines_joints, [])
 

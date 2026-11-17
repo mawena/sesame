@@ -78,7 +78,7 @@ Connexion à Ubuntu par Microsoft Entra ID avec Himmelblau (compilé sur le post
 - [x] Assistant graphique : page « Rejoindre » (adresse pro, nom de la machine), compilation, détails, mise à jour, désactiver
 - [x] Ligne de commande `sesame rejoindre`, documentation
 - [x] Tests par la file Gagarine
-- [ ] Release 2.0.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
+- [x] Release 2.0.0 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
 - [x] Mise à jour sur le poste, compilation de Himmelblau 4.0.8, installation, première connexion Entra (11/11/2026, 21 h 33)
 
 ## Phase 10 — Correctif 2.0.2
@@ -88,4 +88,12 @@ Connexion à Ubuntu par Microsoft Entra ID avec Himmelblau (compilé sur le post
 - [x] Un seul dossier personnel : `home_attr = SPN`, `home_alias = UUID`, `/home/<adresse>` lien vers le dossier local (ancien dossier renommé, jamais supprimé), retiré par « désactiver », exigé par la détection et la vérification
 - [x] Texte de première connexion : trousseau GNOME à mettre au mot de passe Entra
 - [x] Tests par la file Gagarine
-- [ ] Release 2.0.2 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
+- [x] Release 2.0.2 : `.deb`, lintian, tag, release GitHub, dépôt APT vérifié
+
+## Phase 11 — Correctif 2.0.3 : dépôt APT unique (17/11/2026)
+
+- [x] Paquet : plus de source `sesame.sources` ni de clé `sesame.gpg`, `Depends: mawena-depot`, `rm_conffile` de l'ancienne source (`debian/sesame.maintscript`)
+- [x] README, site (`index.html`, `installer.sh` qui lance l'installateur de https://apt.mawena.cloud), metainfo
+- [x] Release GitHub 2.0.3
+- [ ] Publier 2.0.3 et `mawena-depot` dans l'ancien dépôt (clé « Sésame APT » sur le PC de Charles seulement)
+- [ ] Mai 2027 : archiver l'ancien dépôt (page qui renvoie au dépôt unique)

@@ -5,7 +5,7 @@ import unittest
 from sesame import config as cfg, himmelblau
 from sesame.systeme import Resultat, Systeme
 
-A, N = "charles-gamligo", "charles.gamligo@cofinacorp.com"
+A, N = "charles-gamligo", "charles.gamligo@acmecorp.com"
 U = G = 1000
 H = "/home/" + A
 NOM = "PC-CHARLES"

@@ -79,5 +79,5 @@ class TestDefauts(Base):
         self.assertEqual(cfg.defauts(self.m).compte_local, "autre")
 
     def test_adresse_suggeree_depuis_le_domaine_ad(self):
-        self.m.domaines_joints = ["Cofinacorp.com"]
-        self.assertEqual(cfg.defauts(self.m).compte, "charles.gamligo@cofinacorp.com")
+        self.m.domaines_joints = ["Acmecorp.com"]
+        self.assertEqual(cfg.defauts(self.m).compte, "charles.gamligo@acmecorp.com")

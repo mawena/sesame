@@ -1,3 +1,11 @@
+sesame (2.0.3) unstable; urgency=medium
+
+  * Passage au dépôt APT unique https://apt.mawena.cloud : le paquet ne
+    fournit plus la source sesame.sources ni la clé sesame.gpg, dépend de
+    mawena-depot et retire l'ancienne source (rm_conffile).
+
+ -- mawena <57989130+mawena@users.noreply.github.com>  Tue, 17 Nov 2026 20:00:00 +0100
+
 sesame (2.0.2) unstable; urgency=medium
 
   * Installation sans question de dpkg (--force-confdef --force-confold) ;

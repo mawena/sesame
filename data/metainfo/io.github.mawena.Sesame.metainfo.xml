@@ -54,6 +54,11 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="2.0.3" date="2026-11-17">
+      <description>
+        <p>Passage au dépôt APT unique de mawena (apt.mawena.cloud) : le paquet dépend de mawena-depot, qui installe la source et la clé du dépôt ; l'ancienne source est retirée.</p>
+      </description>
+    </release>
     <release version="2.0.2" date="2026-11-11">
       <description>
         <p>Correctif : installation sans question de dpkg (himmelblau-apparmor), sockets de SSSD arrêtés en quittant l'AD, un seul dossier personnel quelle que soit la façon de se connecter, et rappel du trousseau GNOME.</p>

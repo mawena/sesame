@@ -1,7 +1,7 @@
 # Sésame
 
-**Site : [mawena.github.io/sesame](https://mawena.github.io/sesame/)** — dépôt APT signé, mises à jour par
-`sudo apt upgrade`.
+**Site : [mawena.github.io/sesame](https://mawena.github.io/sesame/)** — installation par le dépôt APT signé de mawena
+([apt.mawena.cloud](https://apt.mawena.cloud/)), mises à jour par `sudo apt upgrade`.
 
 Sésame relie un poste **Ubuntu Desktop 24.04 ou plus récent** à **Microsoft Entra ID** avec
 [Himmelblau](https://himmelblau-idm.org), **comme on le fait sur un PC Windows** : on donne son **adresse pro** et le
@@ -13,32 +13,36 @@ mêmes groupes, mêmes réglages.
 
 ## Installation
 
-Sésame s'installe depuis son **dépôt APT signé**, publié sur [mawena.github.io/sesame](https://mawena.github.io/sesame/) ;
-ensuite, `sudo apt upgrade` apporte les nouvelles versions.
+Sésame s'installe depuis le **dépôt APT signé unique de mawena**, [apt.mawena.cloud](https://apt.mawena.cloud/) (un
+seul dépôt pour tous ses paquets Ubuntu) ; ensuite, `sudo apt upgrade` apporte les nouvelles versions.
 
 ### En une ligne
 
 ```bash
-curl -fsSL https://mawena.github.io/sesame/installer.sh | sudo sh
+curl -fsSL https://apt.mawena.cloud/installer.sh | sudo sh -s -- sesame
 ```
 
-Le script ([à lire sur le site](https://mawena.github.io/sesame/installer.sh)) ajoute la clé et le dépôt, puis installe
-Sésame : exactement les trois étapes ci-dessous.
+Le script ([à lire](https://apt.mawena.cloud/installer.sh)) ajoute la clé et le dépôt, puis installe Sésame :
+exactement les trois étapes ci-dessous.
 
 ### Pas à pas
 
 ```bash
 # 1. La clé qui signe le dépôt
-sudo curl -fsSLo /usr/share/keyrings/sesame.gpg https://mawena.github.io/sesame/apt/sesame.gpg
+sudo curl -fsSL -o /usr/share/keyrings/mawena-depot.gpg https://apt.mawena.cloud/mawena-depot.gpg
 # 2. Le dépôt
-sudo curl -fsSLo /etc/apt/sources.list.d/sesame.sources https://mawena.github.io/sesame/apt/sesame.sources
+sudo curl -fsSL -o /etc/apt/sources.list.d/mawena-depot.sources https://apt.mawena.cloud/mawena-depot.sources
 # 3. L'installation
-sudo apt update && sudo apt install sesame
+sudo apt update && sudo apt install mawena-depot sesame
 ```
 
-Clé de signature : « Sésame APT (mawena) », empreinte `EC3E F563 FE1B 133E 5575 3127 1089 B937 B4BD A7F1`.
-Le paquet installe lui-même la source (`/etc/apt/sources.list.d/sesame.sources`) et la clé
-(`/usr/share/keyrings/sesame.gpg`).
+Clé de signature : « mawena APT », empreinte `60A2 0BB2 21C9 1DAD F39D D55B 456B 0129 30FA 901D`.
+Le paquet `sesame` dépend de `mawena-depot`, qui installe la source (`/etc/apt/sources.list.d/mawena-depot.sources`)
+et la clé (`/usr/share/keyrings/mawena-depot.gpg`).
+
+**Installé avant la 2.0.3** (ancien dépôt `https://mawena.github.io/sesame/apt`) : rien à faire,
+`sudo apt update && sudo apt upgrade` installe `mawena-depot` et retire l'ancienne source `sesame.sources`. L'ancien
+dépôt reste en ligne jusqu'à mai 2027.
 
 ### Mise à jour
 
@@ -52,7 +56,8 @@ En dernier recours, téléchargez `sesame_<version>_all.deb` et `SHA256SUMS` sur
 [releases](https://github.com/mawena/sesame/releases/latest), vérifiez la somme (`sha256sum -c SHA256SUMS`), puis :
 
 ```bash
-sudo apt install ./sesame_<version>_all.deb
+curl -fsSLO https://apt.mawena.cloud/pool/main/depot/mawena-depot_0.2.1_all.deb   # dépendance : le dépôt et sa clé
+sudo apt install ./mawena-depot_0.2.1_all.deb ./sesame_<version>_all.deb
 ```
 
 ## À quoi ça sert
@@ -209,7 +214,7 @@ docs/                 conception, captures
 ```bash
 make test    # tests unitaires (bibliothèque standard seulement)
 make deb     # construit dist/sesame_<version>_all.deb, SHA256SUMS, lintian
-make apt     # publie dist/*.deb dans le dépôt APT signé (branche gh-pages) et met le site à jour
+make apt     # publie dist/*.deb dans l'ancien dépôt APT signé (branche gh-pages, jusqu'en mai 2027) et met le site à jour
 ```
 
 Sur un poste partagé avec Gagarine, les travaux lourds passent par sa file :

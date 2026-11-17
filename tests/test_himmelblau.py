@@ -34,7 +34,7 @@ class TestPaquets(unittest.TestCase):
 
 class TestDomaine(unittest.TestCase):
     def test_domaine(self):
-        self.assertEqual(h.domaine("Charles.G@CofinaCorp.com"), "cofinacorp.com")
+        self.assertEqual(h.domaine("Charles.G@AcmeCorp.com"), "acmecorp.com")
         self.assertEqual(h.domaine("sans-arobase"), "")
         self.assertEqual(h.domaine(""), "")
 
