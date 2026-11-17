@@ -38,7 +38,7 @@
     <div class="installation-courte">
       <p>Sur Ubuntu 24.04 ou plus récent :</p>
       <div class="commande">
-        <pre><code id="cmd-courte">curl -fsSL https://mawena.github.io/sesame/installer.sh | sudo sh</code></pre>
+        <pre><code id="cmd-courte">curl -fsSL https://apt.mawena.cloud/installer.sh | sudo sh -s -- sesame</code></pre>
         <button type="button" class="copier" data-cible="cmd-courte" hidden>Copier</button>
       </div>
       <p class="nuance">Le script ajoute le dépôt APT signé puis installe le paquet ; <a href="#installer">les trois commandes qu'il lance</a> sont détaillées plus bas. Lancez ensuite « Sésame » depuis les applications, ou <code>sesame-assistant</code>.</p>
@@ -91,26 +91,26 @@
 
   <section class="installer" id="installer" aria-labelledby="installer-titre">
     <h2 id="installer-titre">Installer</h2>
-    <p>Pour Ubuntu Desktop 24.04 ou plus récent (GNOME, GDM). Il faut des droits d'administration sur le poste, environ 10 Go de disque et 6 Go de RAM pour compiler Himmelblau. Une fois le dépôt ajouté, <code>sudo apt upgrade</code> apporte les nouvelles versions.</p>
+    <p>Pour Ubuntu Desktop 24.04 ou plus récent (GNOME, GDM). Il faut des droits d'administration sur le poste, environ 10 Go de disque et 6 Go de RAM pour compiler Himmelblau. Sésame est publié dans le <a href="https://apt.mawena.cloud/">dépôt APT signé de mawena</a>, un seul dépôt pour tous ses paquets : une fois le dépôt ajouté, <code>sudo apt upgrade</code> apporte les nouvelles versions.</p>
     <ol class="pas">
       <li>
         <p>Ajouter la clé qui signe le dépôt :</p>
-        <div class="commande"><pre><code id="cmd-cle">sudo curl -fsSLo /usr/share/keyrings/sesame.gpg https://mawena.github.io/sesame/apt/sesame.gpg</code></pre><button type="button" class="copier" data-cible="cmd-cle" hidden>Copier</button></div>
+        <div class="commande"><pre><code id="cmd-cle">sudo curl -fsSLo /usr/share/keyrings/mawena-depot.gpg https://apt.mawena.cloud/mawena-depot.gpg</code></pre><button type="button" class="copier" data-cible="cmd-cle" hidden>Copier</button></div>
       </li>
       <li>
         <p>Ajouter le dépôt :</p>
-        <div class="commande"><pre><code id="cmd-source">sudo curl -fsSLo /etc/apt/sources.list.d/sesame.sources https://mawena.github.io/sesame/apt/sesame.sources</code></pre><button type="button" class="copier" data-cible="cmd-source" hidden>Copier</button></div>
+        <div class="commande"><pre><code id="cmd-source">sudo curl -fsSLo /etc/apt/sources.list.d/mawena-depot.sources https://apt.mawena.cloud/mawena-depot.sources</code></pre><button type="button" class="copier" data-cible="cmd-source" hidden>Copier</button></div>
       </li>
       <li>
         <p>Installer :</p>
-        <div class="commande"><pre><code id="cmd-installer">sudo apt update && sudo apt install sesame</code></pre><button type="button" class="copier" data-cible="cmd-installer" hidden>Copier</button></div>
+        <div class="commande"><pre><code id="cmd-installer">sudo apt update && sudo apt install mawena-depot sesame</code></pre><button type="button" class="copier" data-cible="cmd-installer" hidden>Copier</button></div>
       </li>
       <li>
         <p>Rejoindre Entra (ou lancez « Sésame » depuis les applications) :</p>
         <div class="commande"><pre><code id="cmd-etat">sesame rejoindre</code></pre><button type="button" class="copier" data-cible="cmd-etat" hidden>Copier</button></div>
       </li>
     </ol>
-    <p>Sans le dépôt : téléchargez le paquet <code>.deb</code> et sa somme de contrôle sur la page de la <a href="https://github.com/mawena/sesame/releases/latest">dernière version</a>, puis <code>sudo apt install ./sesame_*_all.deb</code>.</p>
+    <p>Sans le dépôt : téléchargez le paquet <code>.deb</code> et sa somme de contrôle sur la page de la <a href="https://github.com/mawena/sesame/releases/latest">dernière version</a>, avec celui de <a href="https://apt.mawena.cloud/pool/main/depot/mawena-depot_0.2.1_all.deb">mawena-depot</a>, puis <code>sudo apt install ./mawena-depot_*_all.deb ./sesame_*_all.deb</code>.</p>
     <p class="liens">
       <a href="https://github.com/mawena/sesame">Code source et documentation</a>
       <a href="https://github.com/mawena/sesame/releases">Toutes les versions</a>
@@ -121,7 +121,7 @@
 
 <footer class="pied">
   <p>Sésame est un logiciel libre sous licence MIT, écrit par <a href="https://github.com/mawena">mawena</a>. Il s'appuie sur <a href="https://himmelblau-idm.org">Himmelblau</a> ; il n'est affilié ni à Microsoft ni au projet Himmelblau.</p>
-  <p>Clé du dépôt APT : <code>EC3E F563 FE1B 133E 5575 3127 1089 B937 B4BD A7F1</code></p>
+  <p>Dépôt APT : <a href="https://apt.mawena.cloud/">apt.mawena.cloud</a>, clé « mawena APT » <code>60A2 0BB2 21C9 1DAD F39D D55B 456B 0129 30FA 901D</code></p>
 </footer>
 
 <script src="sesame.js" defer></script>

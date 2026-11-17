@@ -1,7 +1,10 @@
-Dépôt APT de Sésame : https://mawena.github.io/sesame/apt (branche gh-pages).
+Ancien dépôt APT de Sésame : https://mawena.github.io/sesame/apt (branche gh-pages).
+Depuis la 2.0.3, Sésame est publié dans le dépôt unique https://apt.mawena.cloud (paquet mawena-depot) et le paquet
+ne fournit plus ces fichiers. L'ancien dépôt reste en ligne jusqu'à mai 2027 (publier-apt.sh s'en sert encore, avec
+mawena-depot pour les machines qui ne connaissent que lui).
 
 sesame.gpg      clé publique de signature (format binaire, sans armure)
-sesame.sources  source deb822 installée dans /etc/apt/sources.list.d/
+sesame.sources  source deb822 de l'ancien dépôt (installée par le paquet jusqu'à la 2.0.2)
 
 Clé de signature : « Sésame APT (mawena) <57989130+mawena@users.noreply.github.com> »
 Empreinte : EC3E F563 FE1B 133E 5575  3127 1089 B937 B4BD A7F1

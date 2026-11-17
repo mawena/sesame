@@ -10,6 +10,7 @@ Rules-Requires-Root: no
 Package: sesame
 Architecture: all
 Depends: ${misc:Depends},
+         mawena-depot,
          python3 (>= 3.10),
          pkexec,
          polkitd,
